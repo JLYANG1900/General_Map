@@ -1,3 +1,9 @@
+/* 定义 CSS 变量以便动态换色 */
+:root {
+    --theme-color: #b38b59;                /* 主题色 */
+    --theme-bg-opacity: rgba(179, 139, 89, 0.3); /* 半透明背景色 (用于拖拽高亮) */
+}
+
 /* --- 扩展面板容器 --- */
 #general-map-panel {
     position: fixed;
@@ -8,7 +14,7 @@
     height: 85vh;
     max-height: 900px;
     background: #1a1a1a;
-    border: 2px solid #b38b59;
+    border: 2px solid var(--theme-color); /* Updated */
     z-index: 20000;
     display: none;
     box-shadow: 0 0 50px rgba(0,0,0,0.9);
@@ -26,7 +32,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    border-bottom: 1px solid #b38b59;
+    border-bottom: 1px solid var(--theme-color); /* Updated */
     color: #e0c5a1;
     font-weight: bold;
     flex-shrink: 0;
@@ -68,10 +74,10 @@
     max-height: 80vh;
     overflow-y: auto; 
     background-color: #242424;
-    border: 1px solid #b38b59;
-    border-left: 5px solid #b38b59;
+    border: 1px solid var(--theme-color); /* Updated */
+    border-left: 5px solid var(--theme-color); /* Updated */
     padding: 20px;
-    z-index: 20002; /* 详情弹窗层级 */
+    z-index: 20002;
     box-shadow: 0 0 50px rgba(0,0,0,1); 
     text-align: left;
 }
@@ -86,7 +92,6 @@
     align-items: center;
     padding: 10px;
     width: 100%;
-    /* 确保 wrapper 是定位参考点，使内部绝对定位生效 */
     position: relative; 
     min-height: 100%;
 }
@@ -110,7 +115,7 @@
 /* 控制栏与编辑开关 */
 .controls-bar {
     background: #242424;
-    border: 1px solid #b38b59;
+    border: 1px solid var(--theme-color); /* Updated */
     padding: 8px 15px;
     margin-bottom: 15px;
     border-radius: 4px;
@@ -162,12 +167,12 @@
   transition: .4s;
   border-radius: 50%;
 }
-input:checked + .slider { background-color: #b38b59; }
+input:checked + .slider { background-color: var(--theme-color); } /* Updated */
 input:checked + .slider:before { transform: translateX(16px); }
 
 /* 按钮通用 */
 .general-btn {
-    border: 1px solid #b38b59;
+    border: 1px solid var(--theme-color); /* Updated */
     color: #e0c5a1;
     background-color: transparent;
     padding: 6px 12px;
@@ -179,7 +184,7 @@ input:checked + .slider:before { transform: translateX(16px); }
     display: inline-block;
     font-size: 13px;
 }
-.general-btn:hover { background-color: #b38b59; color: #1a1a1a; }
+.general-btn:hover { background-color: var(--theme-color); color: #1a1a1a; } /* Updated */
 .general-btn.danger { border-color: #e57373; color: #e57373; }
 .general-btn.danger:hover { background-color: #e57373; color: white; }
 .general-btn.small { padding: 2px 6px; font-size: 11px; margin-left: 5px; }
@@ -191,10 +196,10 @@ input:checked + .slider:before { transform: translateX(16px); }
     max-width: 700px;
     aspect-ratio: 1 / 1;
     background-color: #242424;
-    background-image: url('https://files.catbox.moe/clwj2e.jpg'); /* 默认背景 */
+    background-image: url('https://files.catbox.moe/clwj2e.jpg');
     background-size: cover;
     background-position: center;
-    border: 3px solid #b38b59;
+    border: 3px solid var(--theme-color); /* Updated */
     box-shadow: 0 0 30px rgba(0,0,0,0.7);
     overflow: hidden;
     flex-shrink: 0; 
@@ -204,12 +209,12 @@ input:checked + .slider:before { transform: translateX(16px); }
 /* 地标样式 */
 .location {
     position: absolute;
-    cursor: pointer; /* 默认点击 */
+    cursor: pointer;
     transition: transform 0.2s ease, border 0.2s;
     user-select: none;
     z-index: 10;
     background-color: rgba(0, 0, 0, 0.85);
-    border: 1px solid #b38b59;
+    border: 1px solid var(--theme-color); /* Updated */
     padding: 4px 8px;
     border-radius: 4px;
     display: flex;
@@ -218,15 +223,15 @@ input:checked + .slider:before { transform: translateX(16px); }
     white-space: nowrap;
     transform: translate(-50%, -50%);
 }
-.location:hover { z-index: 20; background-color: #b38b59; color: #1a1a1a !important; }
+.location:hover { z-index: 20; background-color: var(--theme-color); color: #1a1a1a !important; } /* Updated */
 .location.dragging { opacity: 0.8; transform: translate(-50%, -50%) scale(1.1); background-color: #e0c5a1; color: #000 !important; }
 .location .label { font-size: 12px; font-weight: bold; pointer-events: none; }
 
 /* 编辑模式下的地标特殊样式 */
 body.general-editing-active .location {
-    cursor: grab; /* 编辑模式下可拖拽 */
+    cursor: grab;
     border: 1px dashed #fff;
-    background-color: rgba(179, 139, 89, 0.3);
+    background-color: var(--theme-bg-opacity); /* Updated to use variable for opacity */
 }
 body.general-editing-active .location:active { cursor: grabbing; }
 
@@ -234,10 +239,20 @@ body.general-editing-active .location:active { cursor: grabbing; }
 .popup-header-edit { border-bottom: 1px dashed #666; margin-bottom: 10px; padding: 5px; background: rgba(0,0,0,0.3); color: #fff; }
 .editable-text { border: 1px dashed transparent; padding: 2px; transition: 0.2s; }
 body.general-editing-active .editable-text { border-color: #666; background: rgba(255,255,255,0.05); cursor: text; }
-body.general-editing-active .editable-text:hover { border-color: #b38b59; }
-body.general-editing-active .editable-text:focus { outline: none; border-color: #b38b59; background: #000; }
+body.general-editing-active .editable-text:hover { border-color: var(--theme-color); } /* Updated */
+body.general-editing-active .editable-text:focus { outline: none; border-color: var(--theme-color); background: #000; } /* Updated */
 
-.popup-image { width: 100%; height: auto; max-height: 200px; object-fit: cover; margin: 10px 0; border: 1px solid #444; display: block; }
+/* [Updated] 封面图样式更新：移除最大高度限制，允许自由尺寸 */
+.popup-image { 
+    width: 100%; 
+    height: auto; 
+    /* max-height: 200px; REMOVED */
+    /* object-fit: cover; REMOVED */
+    margin: 10px 0; 
+    border: 1px solid #444; 
+    display: block; 
+}
+
 .popup-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 20001; }
 .close-btn { float: right; cursor: pointer; font-size: 20px; color: #888; }
 .close-btn:hover { color: #fff; }
@@ -252,31 +267,29 @@ body.general-editing-active .editable-text:focus { outline: none; border-color: 
     display: flex; flex-direction: column; gap: 4px; z-index: 10; 
     max-height: 90%; overflow-y: auto;
 }
-/* 在编辑模式下，楼层导航不再绝对定位覆盖图片，而是显示在下方，方便编辑 */
+
 body.general-editing-active .floor-nav {
     position: relative; top: auto; left: auto; transform: none;
     width: 100%; padding: 10px; background: #111;
 }
 
-.floor-btn { background-color: rgba(0,0,0,0.85); border: 1px solid #b38b59; color: #e0c5a1; padding: 4px 8px; cursor: pointer; text-align: left; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
-.floor-btn:hover { background-color: #b38b59; color: #000; }
+.floor-btn { background-color: rgba(0,0,0,0.85); border: 1px solid var(--theme-color); color: #e0c5a1; padding: 4px 8px; cursor: pointer; text-align: left; font-size: 11px; display: flex; justify-content: space-between; align-items: center; } /* Updated */
+.floor-btn:hover { background-color: var(--theme-color); color: #000; } /* Updated */
 
 /* 编辑按钮 */
 .edit-controls { display: none; margin-top: 5px; gap: 5px; justify-content: center; }
 body.general-editing-active .edit-controls { display: flex; }
 
-/* ============================================================
-   [FIX] 补全出行菜单样式，并确保 Z-Index 高于 .general-popup (20002)
-   ============================================================ */
+/* 出行菜单 */
 #travel-menu-overlay { 
     display: none; 
-    position: absolute; /* 覆盖在 general-wrapper 上 */
+    position: absolute; 
     top: 0; 
     left: 0; 
     width: 100%; 
     height: 100%; 
     background: rgba(0,0,0,0.85); 
-    z-index: 20010; /* 高层级，确保覆盖下层弹窗 */
+    z-index: 20010; 
     justify-content: center; 
     align-items: center; 
 }
@@ -284,7 +297,7 @@ body.general-editing-active .edit-controls { display: flex; }
 .travel-menu-box { 
     position: relative; 
     background: #242424; 
-    border: 1px solid #b38b59; 
+    border: 1px solid var(--theme-color); /* Updated */
     padding: 20px; 
     width: 85%; 
     max-width: 300px; 
@@ -297,7 +310,7 @@ body.general-editing-active .edit-controls { display: flex; }
     padding: 8px; 
     margin-bottom: 15px; 
     background: #1a1a1a; 
-    border: 1px solid #b38b59; 
+    border: 1px solid var(--theme-color); /* Updated */
     color: #dcdcdc; 
     text-align: center; 
 }
