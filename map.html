@@ -1,0 +1,43 @@
+<div class="general-wrapper">
+    <h1>大地图 - 自由定义一切</h1>
+    
+    <!-- 顶部控制栏 -->
+    <div class="controls-bar">
+        <div class="edit-toggle-wrapper">
+            <label class="switch">
+                <input type="checkbox" id="edit-mode-toggle" onchange="window.GeneralMap.toggleEditMode()">
+                <span class="slider round"></span>
+            </label>
+            <span id="edit-mode-label">✏️ 编辑模式</span>
+        </div>
+
+        <button class="general-btn" onclick="window.GeneralMap.resetData()">↺ 重置数据</button>
+        <button class="general-btn" onclick="document.getElementById('bg-upload').click()">📂 更换地图背景...</button>
+        <input type="file" id="bg-upload" accept="image/*" style="display:none;" onchange="window.GeneralMap.changeBackground(this)">
+    </div>
+
+    <h2 id="subtitle-text">双击地标查看详情，长按拖拽移动 (编辑模式下可直接拖拽)</h2>
+
+    <!-- 地图容器：内容由 JS 动态生成 -->
+    <div class="map-container" id="general-map-container">
+        <!-- 动态生成的 Pins 会放在这里 -->
+    </div>
+
+    <!-- 通用弹窗容器：内容由 JS 动态生成 -->
+    <div id="dynamic-popup" class="general-popup">
+        <span class="close-btn" onclick="window.GeneralMap.closeAllPopups()">&times;</span>
+        <div id="popup-content"></div>
+    </div>
+
+    <!-- 遮罩层 -->
+    <div class="popup-overlay" id="general-overlay" onclick="window.GeneralMap.closeAllPopups()"></div>
+
+    <!-- 出行菜单 (保持原有逻辑) -->
+    <div id="travel-menu-overlay" onclick="if(event.target === this) window.GeneralMap.closeTravelMenu()">
+        <div class="travel-menu-box">
+            <span class="close-btn" onclick="window.GeneralMap.closeTravelMenu()">&times;</span>
+            <div id="travel-title" style="color:#e0c5a1; margin-bottom:20px;">前往目的地</div>
+            <div id="travel-content" class="travel-options"></div>
+        </div>
+    </div>
+</div>

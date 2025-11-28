@@ -1,0 +1,274 @@
+/* --- 扩展面板容器 --- */
+#general-map-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 760px;
+    height: 85vh;
+    max-height: 900px;
+    background: #1a1a1a;
+    border: 2px solid #b38b59;
+    z-index: 20000;
+    display: none;
+    box-shadow: 0 0 50px rgba(0,0,0,0.9);
+    border-radius: 8px;
+    overflow: hidden; 
+    font-family: 'Noto Serif SC', 'Cormorant Garamond', serif;
+}
+
+/* 顶部标题栏 */
+#general-drag-handle {
+    width: 100%;
+    height: 40px;
+    background: #242424;
+    cursor: default;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-bottom: 1px solid #b38b59;
+    color: #e0c5a1;
+    font-weight: bold;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 20003; 
+}
+
+#general-close-btn {
+    position: absolute;
+    right: 15px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+/* 内容区域 */
+#general-content-area {
+    height: calc(100% - 40px);
+    width: 100%;
+    overflow-y: auto; 
+    overflow-x: hidden;
+    padding: 0;
+    background-color: #1a1a1a;
+    -webkit-overflow-scrolling: touch; 
+}
+
+#general-content-area::-webkit-scrollbar { width: 6px; }
+#general-content-area::-webkit-scrollbar-track { background: #1a1a1a; }
+#general-content-area::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+
+/* --- 弹窗样式 --- */
+.general-popup {
+    display: none;
+    position: absolute; 
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 85%;
+    max-width: 500px;
+    max-height: 80vh; /* 增加高度适应动态内容 */
+    overflow-y: auto; 
+    background-color: #242424;
+    border: 1px solid #b38b59;
+    border-left: 5px solid #b38b59;
+    padding: 20px;
+    z-index: 20002;
+    box-shadow: 0 0 50px rgba(0,0,0,1); 
+    text-align: left;
+}
+
+/* 基础内容样式 */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap');
+
+.general-wrapper {
+    color: #dcdcdc;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px;
+    width: 100%;
+}
+
+.general-wrapper h1, .general-wrapper h2 {
+    font-family: 'Cormorant Garamond', serif;
+    text-align: center;
+    color: #e0c5a1;
+    margin: 5px 0;
+}
+.general-wrapper h2 {
+    font-size: 12px;
+    font-style: italic;
+    color: #888;
+    border-bottom: 1px solid #444;
+    padding-bottom: 10px;
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+/* 控制栏与编辑开关 */
+.controls-bar {
+    background: #242424;
+    border: 1px solid #b38b59;
+    padding: 8px 15px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
+    justify-content: center;
+    color: #e0c5a1;
+    font-size: 14px;
+    width: 95%;
+    max-width: 700px;
+}
+
+.edit-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #111;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid #444;
+}
+
+/* Switch 开关样式 */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+}
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 20px;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+input:checked + .slider { background-color: #b38b59; }
+input:checked + .slider:before { transform: translateX(16px); }
+
+/* 按钮通用 */
+.general-btn {
+    border: 1px solid #b38b59;
+    color: #e0c5a1;
+    background-color: transparent;
+    padding: 6px 12px;
+    border-radius: 2px;
+    cursor: pointer;
+    font-family: 'Noto Serif SC', serif;
+    transition: all 0.3s;
+    text-align: center;
+    display: inline-block;
+    font-size: 13px;
+}
+.general-btn:hover { background-color: #b38b59; color: #1a1a1a; }
+.general-btn.danger { border-color: #e57373; color: #e57373; }
+.general-btn.danger:hover { background-color: #e57373; color: white; }
+.general-btn.small { padding: 2px 6px; font-size: 11px; margin-left: 5px; }
+
+/* 地图容器 */
+.map-container {
+    position: relative;
+    width: 100%;
+    max-width: 700px;
+    aspect-ratio: 1 / 1;
+    background-color: #242424;
+    background-image: url('https://files.catbox.moe/clwj2e.jpg'); /* 默认背景 */
+    background-size: cover;
+    background-position: center;
+    border: 3px solid #b38b59;
+    box-shadow: 0 0 30px rgba(0,0,0,0.7);
+    overflow: hidden;
+    flex-shrink: 0; 
+    margin-bottom: 50px;
+}
+
+/* 地标样式 */
+.location {
+    position: absolute;
+    cursor: pointer; /* 默认点击 */
+    transition: transform 0.2s ease, border 0.2s;
+    user-select: none;
+    z-index: 10;
+    background-color: rgba(0, 0, 0, 0.85);
+    border: 1px solid #b38b59;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    white-space: nowrap;
+    transform: translate(-50%, -50%);
+}
+.location:hover { z-index: 20; background-color: #b38b59; color: #1a1a1a !important; }
+.location.dragging { opacity: 0.8; transform: translate(-50%, -50%) scale(1.1); background-color: #e0c5a1; color: #000 !important; }
+.location .label { font-size: 12px; font-weight: bold; pointer-events: none; }
+
+/* 编辑模式下的地标特殊样式 */
+body.general-editing-active .location {
+    cursor: grab; /* 编辑模式下可拖拽 */
+    border: 1px dashed #fff;
+    background-color: rgba(179, 139, 89, 0.3);
+}
+body.general-editing-active .location:active { cursor: grabbing; }
+
+/* 弹窗内容样式 */
+.popup-header-edit { border-bottom: 1px dashed #666; margin-bottom: 10px; padding: 5px; background: rgba(0,0,0,0.3); color: #fff; }
+.editable-text { border: 1px dashed transparent; padding: 2px; transition: 0.2s; }
+body.general-editing-active .editable-text { border-color: #666; background: rgba(255,255,255,0.05); cursor: text; }
+body.general-editing-active .editable-text:hover { border-color: #b38b59; }
+body.general-editing-active .editable-text:focus { outline: none; border-color: #b38b59; background: #000; }
+
+.popup-image { width: 100%; height: auto; max-height: 200px; object-fit: cover; margin: 10px 0; border: 1px solid #444; display: block; }
+.popup-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 20001; }
+.close-btn { float: right; cursor: pointer; font-size: 20px; color: #888; }
+.close-btn:hover { color: #fff; }
+
+/* 内部视图容器 */
+.interior-container { position: relative; width: 100%; margin-top: 15px; border: 1px solid #444; min-height: 200px; background: #000; }
+.interior-image { width: 100%; height: auto; display: block; }
+
+/* 楼层导航 */
+.floor-nav { 
+    position: absolute; top: 50%; left: 5px; transform: translateY(-50%); 
+    display: flex; flex-direction: column; gap: 4px; z-index: 10; 
+    max-height: 90%; overflow-y: auto;
+}
+/* 在编辑模式下，楼层导航不再绝对定位覆盖图片，而是显示在下方，方便编辑 */
+body.general-editing-active .floor-nav {
+    position: relative; top: auto; left: auto; transform: none;
+    width: 100%; padding: 10px; background: #111;
+}
+
+.floor-btn { background-color: rgba(0,0,0,0.85); border: 1px solid #b38b59; color: #e0c5a1; padding: 4px 8px; cursor: pointer; text-align: left; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
+.floor-btn:hover { background-color: #b38b59; color: #000; }
+
+/* 编辑按钮 */
+.edit-controls { display: none; margin-top: 5px; gap: 5px; justify-content: center; }
+body.general-editing-active .edit-controls { display: flex; }
+
+/* 移动端适配 */
+@media screen and (max-width: 768px) {
+    #general-map-panel {
+        width: 100vw; height: 100dvh; max-height: none; top: 0; left: 0; transform: none; border: none;
+    }
+    #general-content-area { padding-bottom: 50px; }
+    .map-container { width: 100%; height: auto; border-left: none; border-right: none; }
+    .general-popup { width: 95%; max-height: 85vh; padding: 15px; }
+    .controls-bar { flex-direction: column; align-items: stretch; }
+}
