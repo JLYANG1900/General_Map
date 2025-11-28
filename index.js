@@ -26,7 +26,8 @@ window.GeneralMap = {
     mapData: {},         
     isEditing: false,    
     currentDestination: '',
-    themeColor: '#b38b59', // 默认主题色
+    themeColor: '#b38b59', 
+    backgroundImage: null, // 新增：背景图也存入内存状态
     
     // 初始化
     init: function() {
@@ -34,88 +35,76 @@ window.GeneralMap = {
         this.loadSettingsFromServer();
         
         this.renderMapPins();
-        this.loadBackground(); 
+        // 渲染背景 (注意：现在背景也是从 Server 加载的)
+        this.renderBackground(); 
     },
 
     // ==========================================
-    // [修复] 服务端数据同步 (兼容性修复版)
+    // 服务端数据同步 (Full Sync V7)
     // ==========================================
     
     // 从服务器加载设置
     loadSettingsFromServer: function() {
-        // 1. 尝试从全局 extension_settings 获取 (最通用)
+        // 1. 尝试从全局 extension_settings 获取
         let settings = null;
         if (typeof extension_settings !== 'undefined' && extension_settings[extensionName]) {
             settings = extension_settings[extensionName];
-        } 
-        // 2. 尝试从 stContext 获取 (作为备选)
-        else if (stContext && stContext.extensionSettings && stContext.extensionSettings[extensionName]) {
+        } else if (stContext && stContext.extensionSettings && stContext.extensionSettings[extensionName]) {
             settings = stContext.extensionSettings[extensionName];
         }
 
-        // 检查是否有本地旧数据 (用于迁移)
-        const localDataLegacy = localStorage.getItem('general_map_data_v2');
-        const localThemeLegacy = localStorage.getItem('general_map_theme');
-
         if (!settings || Object.keys(settings).length === 0) {
-            // 情况A：服务器没有数据
-            if (localDataLegacy) {
-                console.log("[General Map] 检测到本地旧数据，正在迁移至服务器...");
-                try {
-                    this.mapData = JSON.parse(localDataLegacy);
-                    this.themeColor = localThemeLegacy || '#b38b59';
-                    this.saveSettingsToServer(); // 立即保存迁移的数据
-                } catch (e) {
-                    console.error("迁移失败，使用默认数据", e);
-                    this.mapData = JSON.parse(JSON.stringify(defaultMapData));
-                }
-            } else {
-                // 情况B：全新安装，使用默认数据
-                console.log("[General Map] 加载默认数据...");
-                this.mapData = JSON.parse(JSON.stringify(defaultMapData));
-                this.themeColor = '#b38b59';
+            // 没有服务器数据，尝试迁移本地旧数据（为了兼容）
+            const localBg = localStorage.getItem('general_map_bg_v2');
+            const localData = localStorage.getItem('general_map_data_v2');
+            const localTheme = localStorage.getItem('general_map_theme');
+
+            console.log("[General Map] 未检测到服务器数据，加载默认/本地缓存...");
+            
+            this.mapData = localData ? JSON.parse(localData) : JSON.parse(JSON.stringify(defaultMapData));
+            this.themeColor = localTheme || '#b38b59';
+            this.backgroundImage = localBg || null; 
+
+            // 立即尝试同步一次到服务器，确保存档建立
+            if (localData || localBg) {
+                console.log("[General Map] 正在将本地旧缓存迁移至服务器...");
+                this.saveSettingsToServer();
             }
         } else {
-            // 情况C：服务器有数据，直接使用
-            console.log("[General Map] 从服务器加载数据成功。");
+            // 有服务器数据
+            console.log("[General Map] 已从服务器同步数据。");
             this.mapData = settings.mapData || JSON.parse(JSON.stringify(defaultMapData));
+            this.themeColor = settings.themeColor || '#b38b59';
+            // 关键：从服务器设置中读取背景图
+            this.backgroundImage = settings.backgroundImage || null;
+
             // 合并默认数据防止字段缺失
             for (let key in defaultMapData) {
                 if (!this.mapData[key]) this.mapData[key] = defaultMapData[key];
             }
-            this.themeColor = settings.themeColor || '#b38b59';
         }
 
-        // 应用主题
+        // 应用读取到的设置
         this.applyTheme(this.themeColor, false);
-        
-        // 更新 UI 拾色器
         const picker = document.getElementById('theme-color-picker');
         if(picker) picker.value = this.themeColor;
     },
 
-    // [关键修复] 保存设置到服务器
-    // 不再依赖 stContext.saveExtensionSettings，而是使用全局变量
+    // 保存设置到服务器 (包含背景图)
     saveSettingsToServer: function() {
         const dataToSave = {
             mapData: this.mapData,
-            themeColor: this.themeColor
+            themeColor: this.themeColor,
+            backgroundImage: this.backgroundImage // 新增：保存背景图到服务器
         };
         
-        // 检查全局变量是否存在 (SillyTavern 标准 API)
         if (typeof extension_settings !== 'undefined') {
-            // 1. 写入全局对象
             extension_settings[extensionName] = dataToSave;
             
-            // 2. 调用全局保存函数
             if (typeof saveExtensionSettings === 'function') {
                 saveExtensionSettings();
-                console.log("[General Map] 数据已保存 (Global API)。");
-            } else {
-                console.warn("[General Map] 警告：找不到 saveExtensionSettings 全局函数，数据可能未持久化。");
+                console.log("[General Map] 全量数据已保存至服务器 (含背景)。");
             }
-        } else {
-            console.error("[General Map] 严重错误：找不到 extension_settings 全局对象，无法保存数据。");
         }
     },
 
@@ -124,7 +113,6 @@ window.GeneralMap = {
     // ==========================================
     applyTheme: function(color, shouldSave = true) {
         this.themeColor = color;
-        // 设置 CSS 变量
         document.documentElement.style.setProperty('--theme-color', color);
         
         const r = parseInt(color.substr(1, 2), 16);
@@ -138,15 +126,18 @@ window.GeneralMap = {
     // ==========================================
     // 数据操作
     // ==========================================
-    
     resetData: function() {
-        if(confirm("确定要重置所有地图数据吗？所有自定义名称、图片和楼层都将丢失。")) {
+        if(confirm("确定要重置所有地图数据吗？\n注意：这将清除服务器上的所有自定义设置（包括背景图）。")) {
             this.mapData = JSON.parse(JSON.stringify(defaultMapData));
             this.themeColor = '#b38b59';
+            this.backgroundImage = null; // 重置背景
+            
             this.saveSettingsToServer();
             this.renderMapPins();
+            this.renderBackground();
             this.applyTheme(this.themeColor);
-            alert("数据已重置。");
+            
+            alert("数据已重置并同步至服务器。其他设备请刷新页面。");
         }
     },
 
@@ -447,21 +438,35 @@ window.GeneralMap = {
         }
     },
     
+    // 背景图 - 已修改为上传到服务器
     changeBackground: function(input) {
         if (input.files && input.files[0]) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const bgData = e.target.result;
-                document.getElementById('general-map-container').style.backgroundImage = `url(${bgData})`;
-                localStorage.setItem('general_map_bg_v2', bgData);
+                this.backgroundImage = bgData; // 更新状态
+                this.renderBackground();       // 渲染
+                this.saveSettingsToServer();   // 保存到服务器
             }
             reader.readAsDataURL(input.files[0]);
         }
     },
 
+    renderBackground: function() {
+        // 优先使用同步的背景，否则使用默认 CSS 定义的
+        const container = document.getElementById('general-map-container');
+        if (this.backgroundImage) {
+            container.style.backgroundImage = `url(${this.backgroundImage})`;
+        } else {
+            // 如果没有自定义背景，保持 style.css 里的默认背景
+            // 这里清除 inline style，让 css 生效
+            container.style.backgroundImage = ''; 
+        }
+    },
+
+    // 废弃：不再只从本地加载
     loadBackground: function() {
-        const bg = localStorage.getItem('general_map_bg_v2');
-        if (bg) document.getElementById('general-map-container').style.backgroundImage = `url(${bg})`;
+        // 保留此空函数以防调用报错，逻辑已移至 renderBackground
     },
 
     // ==========================================
@@ -549,7 +554,7 @@ const initInterval = setInterval(() => {
 }, 500);
 
 async function initializeExtension() {
-    console.log("[General Map] Initializing V6 (Compatible Mode)...");
+    console.log("[General Map] Initializing V7 (Full Sync)...");
 
     $('#general-map-panel').remove();
     $('#general-toggle-btn').remove();
@@ -605,4 +610,3 @@ async function initializeExtension() {
         });
     }
 }
-
