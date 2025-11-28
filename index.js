@@ -7,18 +7,18 @@ let stContext = null;
 // 1. 默认数据定义 (Default Data)
 // ==========================================
 const defaultMapData = {
-    "gov": { id: "gov", name: "京港市政府", x: "50%", y: "60%", desc: "城市行政中心。", type: "simple", color: "#ef9a9a" },
-    "villa": { id: "villa", name: "私人别墅", x: "25%", y: "15%", desc: "你自己位于京港北区的一栋独栋别墅。", type: "simple", color: "#ba68c8" },
+    "gov": { id: "gov", name: "市政府", x: "50%", y: "60%", desc: "城市行政中心。", type: "simple", color: "#ef9a9a" },
+    "villa": { id: "villa", name: "私人别墅", x: "25%", y: "15%", desc: "位于北区的一栋独栋别墅。", type: "simple", color: "#ba68c8" },
     "PrivateClub": { id: "PrivateClub", name: "私人会所", x: "75%", y: "15%", desc: "仅限会员进入的高级会所，隐秘性极高。", type: "simple", color: "#ce93d8" },
-    "airport": { id: "airport", name: "机场", x: "85%", y: "35%", desc: "连接京港与世界的交通枢纽。", type: "simple", color: "#b0bec5" },
+    "airport": { id: "airport", name: "机场", x: "85%", y: "35%", desc: "连接世界的交通枢纽。", type: "simple", color: "#b0bec5" },
     "port": { id: "port", name: "港口", x: "85%", y: "65%", desc: "繁忙的国际货运港口。", type: "simple", color: "#a5d6a7" },
-    "office4": { id: "office4", name: "隆桑集团", x: "15%", y: "25%", desc: "京港市的新兴科技巨头。", type: "simple", color: "#b39ddb" },
-    "office3": { id: "office3", name: "盛华集团", x: "10%", y: "35%", desc: "老牌实业集团，在本地拥有深厚根基。", type: "simple", color: "#90caf9" },
-    "office": { id: "office", name: "远洋集团", x: "15%", y: "60%", desc: "主营航运、大宗商品与投资的家族企业。", type: "simple", color: "#64b5f6" },
-    "TVstation": { id: "TVstation", name: "京港电视台", x: "20%", y: "65%", desc: "城市媒体中心，众多节目的录制现场。", type: "simple", color: "#80cbc4" },
-    "office2": { id: "office2", name: "万城娱乐", x: "15%", y: "70%", desc: "国内最大的娱乐产业集团之一。", type: "simple", color: "#e57373" },
-    "highschool": { id: "highschool", name: "京港第三高中", x: "30%", y: "85%", desc: "京港市著名的重点高中。", type: "simple", color: "#ffcc80" },
-    "other-places": { id: "other-places", name: "其他地点", x: "85%", y: "85%", desc: "前往未在地图上标注的区域。", type: "custom", color: "#ffe0b2" }
+    "office4": { id: "office4", name: "A集团", x: "15%", y: "25%", desc: "本市新兴科技巨头。", type: "simple", color: "#b39ddb" },
+    "office3": { id: "office3", name: "B集团", x: "10%", y: "35%", desc: "老牌实业集团，在本地拥有深厚根基。", type: "simple", color: "#90caf9" },
+    "office": { id: "office", name: "C集团", x: "15%", y: "60%", desc: "主营航运、大宗商品与投资的家族企业。", type: "simple", color: "#64b5f6" },
+    "TVstation": { id: "TVstation", name: "电视台", x: "20%", y: "65%", desc: "城市媒体中心，众多节目的录制现场。", type: "simple", color: "#80cbc4" },
+    "office2": { id: "office2", name: "D集团", x: "15%", y: "70%", desc: "国内最大的娱乐产业集团之一。", type: "simple", color: "#e57373" },
+    "highschool": { id: "highschool", name: "高中", x: "30%", y: "85%", desc: "本市著名的重点高中。", type: "simple", color: "#ffcc80" },
+    "other-places": { id: "other-places", name: "其他地点", x: "85%", y: "85%", desc: "前往未在地图上标注的区域。", type: "custom", color: "#ffe0b2" },
 };
 
 // 全局状态
@@ -605,3 +605,4 @@ async function initializeExtension() {
         });
     }
 }
+
