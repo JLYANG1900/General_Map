@@ -18,6 +18,11 @@
         <!-- 数据重置 -->
         <button class="general-btn" onclick="window.GeneralMap.resetData()">↺ 重置数据</button>
         
+        <!-- [新增] 备份功能 -->
+        <button class="general-btn" onclick="window.GeneralMap.exportBackup()">💾 导出备份</button>
+        <button class="general-btn" onclick="document.getElementById('backup-upload').click()">📥 导入备份</button>
+        <input type="file" id="backup-upload" style="display:none" accept=".json" onchange="window.GeneralMap.importBackup(this)">
+
         <!-- 背景更换 -->
         <button class="general-btn" onclick="document.getElementById('bg-upload').click()">📂 更换背景...</button>
         <input type="file" id="bg-upload" accept="image/*" style="display:none;" onchange="window.GeneralMap.changeBackground(this)">
