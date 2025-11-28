@@ -4,7 +4,22 @@ const extensionPath = `scripts/extensions/third-party/${extensionName}`;
 let stContext = null;
 
 // ==========================================
-// 工具 1: 图片压缩 (保留之前的优化)
+// 工具 1: 安全净化 (防止 XSS 攻击)
+// ==========================================
+const Sanitize = {
+    encode: function(str) {
+        if (!str) return "";
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+};
+
+// ==========================================
+// 工具 2: 图片压缩
 // ==========================================
 function compressImage(file, maxWidth = 800, quality = 0.7) {
     return new Promise((resolve, reject) => {
@@ -34,7 +49,7 @@ function compressImage(file, maxWidth = 800, quality = 0.7) {
 }
 
 // ==========================================
-// 工具 2: IndexedDB 简易封装 (解决 5MB 限制)
+// 工具 3: IndexedDB 简易封装
 // ==========================================
 const dbName = "GeneralMapDB_V1";
 const storeName = "settings";
@@ -42,7 +57,6 @@ const storeName = "settings";
 const SimpleDB = {
     db: null,
     
-    // 打开数据库
     open: function() {
         return new Promise((resolve, reject) => {
             if (this.db) return resolve(this.db);
@@ -64,7 +78,6 @@ const SimpleDB = {
         });
     },
 
-    // 获取数据 (替代 localStorage.getItem)
     getItem: async function(key) {
         await this.open();
         return new Promise((resolve, reject) => {
@@ -76,7 +89,6 @@ const SimpleDB = {
         });
     },
 
-    // 保存数据 (替代 localStorage.setItem)
     setItem: async function(key, value) {
         await this.open();
         return new Promise((resolve, reject) => {
@@ -88,7 +100,6 @@ const SimpleDB = {
         });
     },
     
-    // 删除数据
     removeItem: async function(key) {
         await this.open();
         return new Promise((resolve, reject) => {
@@ -126,7 +137,6 @@ window.GeneralMap = {
     currentDestination: '',
     themeColor: '#b38b59', 
     
-    // [修改] init 变为 async
     init: async function() {
         await this.loadTheme(); 
         await this.loadData();
@@ -135,12 +145,10 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 主题管理 (改为异步)
+    // 主题管理
     // ==========================================
     loadTheme: async function() {
-        // 尝试从 DB 读取
         let savedColor = await SimpleDB.getItem('general_map_theme');
-        // 兼容旧版 localStorage (如果 DB 没有，尝试读旧的并迁移)
         if (!savedColor) {
             savedColor = localStorage.getItem('general_map_theme');
         }
@@ -160,22 +168,18 @@ window.GeneralMap = {
         const b = parseInt(color.substr(5, 2), 16);
         document.documentElement.style.setProperty('--theme-bg-opacity', `rgba(${r}, ${g}, ${b}, 0.3)`);
         
-        // [修改] 保存到 DB
         SimpleDB.setItem('general_map_theme', color);
     },
 
     // ==========================================
-    // 数据加载与保存 (核心修改)
+    // 数据加载、保存与备份
     // ==========================================
     loadData: async function() {
-        // [修改] 从 DB 读取
         let rawData = await SimpleDB.getItem('general_map_data_v2');
         
-        // 迁移逻辑：如果 DB 没数据，试试 LocalStorage
         if (!rawData) {
             rawData = localStorage.getItem('general_map_data_v2');
             if (rawData) {
-                // 如果发现旧数据，自动迁移到新 DB
                 try {
                     await SimpleDB.setItem('general_map_data_v2', rawData);
                     console.log("已将旧数据迁移至 IndexedDB");
@@ -200,9 +204,6 @@ window.GeneralMap = {
 
     saveData: async function() {
         try {
-            // [修改] 保存到 DB (支持大文件)
-            // 这里不需要 JSON.stringify，IndexedDB 可以直接存对象
-            // 但为了保持逻辑兼容，存对象即可，不用 stringify
             await SimpleDB.setItem('general_map_data_v2', this.mapData);
         } catch (e) {
             console.error("保存失败", e);
@@ -213,15 +214,66 @@ window.GeneralMap = {
     resetData: async function() {
         if(confirm("确定要重置所有地图数据吗？")) {
             await SimpleDB.removeItem('general_map_data_v2');
-            localStorage.removeItem('general_map_data_v2'); // 清理旧的
+            localStorage.removeItem('general_map_data_v2'); 
             await this.loadData();
             this.renderMapPins();
             alert("数据已重置。");
         }
     },
 
+    // [新增] 导出备份
+    exportBackup: async function() {
+        try {
+            const dataStr = JSON.stringify(this.mapData, null, 2);
+            const blob = new Blob([dataStr], {type: "application/json"});
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            // 文件名包含日期
+            const date = new Date().toISOString().slice(0,10);
+            a.download = `General_Map_Backup_${date}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            alert("导出失败: " + e.message);
+        }
+    },
+
+    // [新增] 导入备份
+    importBackup: function(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const json = JSON.parse(e.target.result);
+                    // 简单验证格式
+                    if (typeof json !== 'object' || Object.keys(json).length === 0) {
+                        throw new Error("无效的地图数据格式");
+                    }
+
+                    if (confirm("导入备份将覆盖当前的地图数据，确定继续吗？")) {
+                        this.mapData = json;
+                        await this.saveData(); // 保存到 IndexedDB
+                        this.renderMapPins();
+                        this.closeAllPopups();
+                        alert("备份导入成功！");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("导入失败：文件格式错误或已损坏。");
+                }
+                // 清空 input 允许重复导入同一文件
+                input.value = '';
+            };
+            reader.readAsText(input.files[0]);
+        }
+    },
+
     // ==========================================
-    // 地图渲染 (保持不变)
+    // 地图渲染
     // ==========================================
     renderMapPins: function() {
         const container = document.getElementById('general-map-container');
@@ -234,7 +286,8 @@ window.GeneralMap = {
             div.style.left = loc.x;
             div.style.top = loc.y;
             if (loc.color) div.style.color = loc.color;
-            div.innerHTML = `<span class="label">${loc.name}</span>`;
+            // 使用 textContent 避免 XSS，或者 Sanitize
+            div.innerHTML = `<span class="label">${Sanitize.encode(loc.name)}</span>`;
             this.bindPinEvents(div, loc.id);
             container.appendChild(div);
         });
@@ -337,13 +390,14 @@ window.GeneralMap = {
         const content = document.getElementById('popup-content');
         const overlay = document.getElementById('general-overlay');
 
+        // [修改] 使用 Sanitize.encode 过滤输出内容
         let html = `
             <div style="display:flex; justify-content:space-between; align-items:start;">
-                <h3 contenteditable="${this.isEditing}" class="editable-text" style="flex:1" onblur="window.GeneralMap.updateField('${id}', 'name', this.innerText)">${data.name}</h3>
+                <h3 contenteditable="${this.isEditing}" class="editable-text" style="flex:1" onblur="window.GeneralMap.updateField('${id}', 'name', this.innerText)">${Sanitize.encode(data.name)}</h3>
                 ${this.isEditing ? `<button class="general-btn small danger" onclick="window.GeneralMap.deletePin('${id}')">🗑️ 删除</button>` : ''}
             </div>
             
-            <p contenteditable="${this.isEditing}" class="editable-text" onblur="window.GeneralMap.updateField('${id}', 'desc', this.innerText)">${data.desc || "暂无描述"}</p>
+            <p contenteditable="${this.isEditing}" class="editable-text" onblur="window.GeneralMap.updateField('${id}', 'desc', this.innerText)">${Sanitize.encode(data.desc || "暂无描述")}</p>
         `;
 
         if (data.image) {
@@ -369,7 +423,8 @@ window.GeneralMap = {
             html += `<button class="general-btn small" onclick="window.GeneralMap.addFloor('${id}')">➕ 添加楼层/区域</button>`;
         }
         
-        html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${data.name}')">🚀 前往此处</button>`;
+        // [修改] 名字也要转义
+        html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(data.name)}')">🚀 前往此处</button>`;
         html += `</div>`;
 
         content.innerHTML = html;
@@ -382,8 +437,9 @@ window.GeneralMap = {
         const content = document.getElementById('popup-content');
         if (!data.floors) data.floors = [];
 
+        // [修改] 转义
         let html = `
-            <h3><span onclick="window.GeneralMap.renderPopup('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${data.name} - 内部</h3>
+            <h3><span onclick="window.GeneralMap.renderPopup('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${Sanitize.encode(data.name)} - 内部</h3>
             <div class="interior-container">
         `;
         if (data.internalImage) {
@@ -394,10 +450,11 @@ window.GeneralMap = {
 
         html += `<div class="floor-nav">`;
         data.floors.forEach((floor, index) => {
+            // [修改] 转义 floor.name
             html += `
                 <div style="display:flex; align-items:center; gap:5px; margin-bottom:4px;">
                     <button class="floor-btn" style="flex:1" onclick="window.GeneralMap.showFloorDetail('${id}', ${index})">
-                        ${floor.name}
+                        ${Sanitize.encode(floor.name)}
                     </button>
                     ${this.isEditing ? `
                         <button class="general-btn small danger" onclick="window.GeneralMap.deleteFloor('${id}', ${index})">×</button>
@@ -423,27 +480,28 @@ window.GeneralMap = {
         const floor = this.mapData[id].floors[floorIndex];
         const content = document.getElementById('popup-content');
         
+        // [修改] 转义 floor.name, floor.content
         let html = `
-            <h3><span onclick="window.GeneralMap.renderInterior('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${floor.name}</h3>
+            <h3><span onclick="window.GeneralMap.renderInterior('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${Sanitize.encode(floor.name)}</h3>
             <p style="font-size:12px; color:#888;">名称 (可编辑):</p>
             <div contenteditable="${this.isEditing}" class="editable-text" style="font-size:16px; margin-bottom:10px;"
-                 onblur="window.GeneralMap.updateFloor('${id}', ${floorIndex}, 'name', this.innerText)">${floor.name}</div>
+                 onblur="window.GeneralMap.updateFloor('${id}', ${floorIndex}, 'name', this.innerText)">${Sanitize.encode(floor.name)}</div>
             
             <p style="font-size:12px; color:#888;">描述 (可编辑):</p>
             <div contenteditable="${this.isEditing}" class="editable-text" style="min-height:50px; margin-bottom:15px;"
-                 onblur="window.GeneralMap.updateFloor('${id}', ${floorIndex}, 'content', this.innerText)">${floor.content || "点击添加描述..."}</div>
+                 onblur="window.GeneralMap.updateFloor('${id}', ${floorIndex}, 'content', this.innerText)">${Sanitize.encode(floor.content || "点击添加描述...")}</div>
         `;
         
         if (floor.subItems && floor.subItems.length > 0) {
             html += `<h4>包含区域:</h4><div style="display:flex; flex-wrap:wrap; gap:5px;">`;
             floor.subItems.forEach(item => {
-                html += `<button class="general-btn small">${item}</button>`;
+                html += `<button class="general-btn small">${Sanitize.encode(item)}</button>`;
             });
             html += `</div>`;
         }
         
         html += `<div style="text-align:center; margin-top:20px;">
-                    <button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${floor.name}')">🚀 前往此处</button>
+                    <button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(floor.name)}')">🚀 前往此处</button>
                  </div>`;
 
         content.innerHTML = html;
@@ -496,7 +554,6 @@ window.GeneralMap = {
         }
     },
 
-    // [修改] 结合压缩 + DB 存储
     uploadImage: function(id, field, input) {
         if (input.files && input.files[0]) {
             const file = input.files[0];
@@ -512,7 +569,6 @@ window.GeneralMap = {
         }
     },
     
-    // [修改] 背景图存储到 DB
     changeBackground: function(input) {
         if (input.files && input.files[0]) {
             compressImage(input.files[0], 1024, 0.7).then(async (bgData) => {
@@ -526,10 +582,9 @@ window.GeneralMap = {
         }
     },
 
-    // [修改] 从 DB 加载背景
     loadBackground: async function() {
         let bg = await SimpleDB.getItem('general_map_bg_v2');
-        if (!bg) bg = localStorage.getItem('general_map_bg_v2'); // 兼容旧版
+        if (!bg) bg = localStorage.getItem('general_map_bg_v2'); 
         if (bg) document.getElementById('general-map-container').style.backgroundImage = `url(${bg})`;
     },
 
@@ -561,8 +616,9 @@ window.GeneralMap = {
         this.currentDestination = destination;
         const box = $('#travel-menu-overlay');
         
+        // 目的地名称也需要转义显示
         box.find('.travel-options').html(`
-            <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">目的地：${destination}</div>
+            <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">目的地：${Sanitize.encode(destination)}</div>
             <button class="general-btn" onclick="window.GeneralMap.confirmTravel(true)">👤 独自前往</button>
             <button class="general-btn" onclick="window.GeneralMap.showCompanionInput()">👥 邀请某人一起前往</button>
             <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.closeTravelMenu()">返回</button>
@@ -575,7 +631,7 @@ window.GeneralMap = {
             <p style="color: #888; margin: 0 0 10px 0;">和谁一起去？</p>
             <input type="text" id="companion-name" class="travel-input" placeholder="输入角色姓名">
             <button class="general-btn" onclick="window.GeneralMap.confirmTravel(false)">🚀 前往</button>
-            <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu('${this.currentDestination}')">返回</button>
+            <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(this.currentDestination)}')">返回</button>
         `);
     },
 
@@ -617,7 +673,7 @@ const initInterval = setInterval(() => {
 }, 500);
 
 async function initializeExtension() {
-    console.log("[General Map] Initializing V4 (IndexedDB)...");
+    console.log("[General Map] Initializing V5 (Secured + Export)...");
 
     $('#general-map-panel').remove();
     $('#general-toggle-btn').remove();
