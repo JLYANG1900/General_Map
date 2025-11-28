@@ -65,13 +65,13 @@
     transform: translate(-50%, -50%);
     width: 85%;
     max-width: 500px;
-    max-height: 80vh; /* 增加高度适应动态内容 */
+    max-height: 80vh;
     overflow-y: auto; 
     background-color: #242424;
     border: 1px solid #b38b59;
     border-left: 5px solid #b38b59;
     padding: 20px;
-    z-index: 20002;
+    z-index: 20002; /* 详情弹窗层级 */
     box-shadow: 0 0 50px rgba(0,0,0,1); 
     text-align: left;
 }
@@ -86,6 +86,9 @@
     align-items: center;
     padding: 10px;
     width: 100%;
+    /* 确保 wrapper 是定位参考点，使内部绝对定位生效 */
+    position: relative; 
+    min-height: 100%;
 }
 
 .general-wrapper h1, .general-wrapper h2 {
@@ -261,6 +264,43 @@ body.general-editing-active .floor-nav {
 /* 编辑按钮 */
 .edit-controls { display: none; margin-top: 5px; gap: 5px; justify-content: center; }
 body.general-editing-active .edit-controls { display: flex; }
+
+/* ============================================================
+   [FIX] 补全出行菜单样式，并确保 Z-Index 高于 .general-popup (20002)
+   ============================================================ */
+#travel-menu-overlay { 
+    display: none; 
+    position: absolute; /* 覆盖在 general-wrapper 上 */
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%; 
+    background: rgba(0,0,0,0.85); 
+    z-index: 20010; /* 高层级，确保覆盖下层弹窗 */
+    justify-content: center; 
+    align-items: center; 
+}
+
+.travel-menu-box { 
+    position: relative; 
+    background: #242424; 
+    border: 1px solid #b38b59; 
+    padding: 20px; 
+    width: 85%; 
+    max-width: 300px; 
+    text-align: center; 
+    box-shadow: 0 0 30px rgba(0,0,0,0.9);
+}
+
+.travel-input { 
+    width: 90%; 
+    padding: 8px; 
+    margin-bottom: 15px; 
+    background: #1a1a1a; 
+    border: 1px solid #b38b59; 
+    color: #dcdcdc; 
+    text-align: center; 
+}
 
 /* 移动端适配 */
 @media screen and (max-width: 768px) {
