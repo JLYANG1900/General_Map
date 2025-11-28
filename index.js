@@ -7,18 +7,18 @@ let stContext = null;
 // 1. 默认数据定义 (Default Data)
 // ==========================================
 const defaultMapData = {
-    "gov": { id: "gov", name: "市政府", x: "50%", y: "60%", desc: "城市行政中心。", type: "simple", color: "#ef9a9a" },
-    "villa": { id: "villa", name: "私人别墅", x: "25%", y: "15%", desc: "位于北区的一栋独栋别墅。", type: "simple", color: "#ba68c8" },
+    "gov": { id: "gov", name: "京港市政府", x: "50%", y: "60%", desc: "城市行政中心。", type: "simple", color: "#ef9a9a" },
+    "villa": { id: "villa", name: "私人别墅", x: "25%", y: "15%", desc: "你自己位于京港北区的一栋独栋别墅。", type: "simple", color: "#ba68c8" },
     "PrivateClub": { id: "PrivateClub", name: "私人会所", x: "75%", y: "15%", desc: "仅限会员进入的高级会所，隐秘性极高。", type: "simple", color: "#ce93d8" },
-    "airport": { id: "airport", name: "机场", x: "85%", y: "35%", desc: "连接世界的交通枢纽。", type: "simple", color: "#b0bec5" },
+    "airport": { id: "airport", name: "机场", x: "85%", y: "35%", desc: "连接京港与世界的交通枢纽。", type: "simple", color: "#b0bec5" },
     "port": { id: "port", name: "港口", x: "85%", y: "65%", desc: "繁忙的国际货运港口。", type: "simple", color: "#a5d6a7" },
-    "office4": { id: "office4", name: "A集团", x: "15%", y: "25%", desc: "本市新兴科技巨头。", type: "simple", color: "#b39ddb" },
-    "office3": { id: "office3", name: "B集团", x: "10%", y: "35%", desc: "老牌实业集团，在本地拥有深厚根基。", type: "simple", color: "#90caf9" },
-    "office": { id: "office", name: "C集团", x: "15%", y: "60%", desc: "主营航运、大宗商品与投资的家族企业。", type: "simple", color: "#64b5f6" },
-    "TVstation": { id: "TVstation", name: "电视台", x: "20%", y: "65%", desc: "城市媒体中心，众多节目的录制现场。", type: "simple", color: "#80cbc4" },
-    "office2": { id: "office2", name: "D集团", x: "15%", y: "70%", desc: "国内最大的娱乐产业集团之一。", type: "simple", color: "#e57373" },
-    "highschool": { id: "highschool", name: "高中", x: "30%", y: "85%", desc: "本市著名的重点高中。", type: "simple", color: "#ffcc80" },
-    "other-places": { id: "other-places", name: "其他地点", x: "85%", y: "85%", desc: "前往未在地图上标注的区域。", type: "custom", color: "#ffe0b2" },
+    "office4": { id: "office4", name: "隆桑集团", x: "15%", y: "25%", desc: "京港市的新兴科技巨头。", type: "simple", color: "#b39ddb" },
+    "office3": { id: "office3", name: "盛华集团", x: "10%", y: "35%", desc: "老牌实业集团，在本地拥有深厚根基。", type: "simple", color: "#90caf9" },
+    "office": { id: "office", name: "远洋集团", x: "15%", y: "60%", desc: "主营航运、大宗商品与投资的家族企业。", type: "simple", color: "#64b5f6" },
+    "TVstation": { id: "TVstation", name: "京港电视台", x: "20%", y: "65%", desc: "城市媒体中心，众多节目的录制现场。", type: "simple", color: "#80cbc4" },
+    "office2": { id: "office2", name: "万城娱乐", x: "15%", y: "70%", desc: "国内最大的娱乐产业集团之一。", type: "simple", color: "#e57373" },
+    "highschool": { id: "highschool", name: "京港第三高中", x: "30%", y: "85%", desc: "京港市著名的重点高中。", type: "simple", color: "#ffcc80" },
+    "other-places": { id: "other-places", name: "其他地点", x: "85%", y: "85%", desc: "前往未在地图上标注的区域。", type: "custom", color: "#ffe0b2" }
 };
 
 // 全局状态
@@ -30,27 +30,29 @@ window.GeneralMap = {
     
     // 初始化
     init: function() {
-        // 等待 ST 上下文加载完毕后再加载数据
-        if (stContext) {
-            this.loadSettingsFromServer();
-        } else {
-            console.warn("[General Map] Context not ready, loading defaults.");
-            this.mapData = JSON.parse(JSON.stringify(defaultMapData));
-        }
+        // 尝试加载数据
+        this.loadSettingsFromServer();
         
         this.renderMapPins();
-        this.loadBackground(); // 背景图依然尝试从本地或Server加载
+        this.loadBackground(); 
     },
 
     // ==========================================
-    // 新增：服务端数据同步 (Server Sync)
+    // [修复] 服务端数据同步 (兼容性修复版)
     // ==========================================
     
     // 从服务器加载设置
     loadSettingsFromServer: function() {
-        // 获取扩展专属设置
-        const settings = stContext.extensionSettings[extensionName];
-        
+        // 1. 尝试从全局 extension_settings 获取 (最通用)
+        let settings = null;
+        if (typeof extension_settings !== 'undefined' && extension_settings[extensionName]) {
+            settings = extension_settings[extensionName];
+        } 
+        // 2. 尝试从 stContext 获取 (作为备选)
+        else if (stContext && stContext.extensionSettings && stContext.extensionSettings[extensionName]) {
+            settings = stContext.extensionSettings[extensionName];
+        }
+
         // 检查是否有本地旧数据 (用于迁移)
         const localDataLegacy = localStorage.getItem('general_map_data_v2');
         const localThemeLegacy = localStorage.getItem('general_map_theme');
@@ -59,13 +61,14 @@ window.GeneralMap = {
             // 情况A：服务器没有数据
             if (localDataLegacy) {
                 console.log("[General Map] 检测到本地旧数据，正在迁移至服务器...");
-                // 如果本地有旧数据，迁移到服务器
-                this.mapData = JSON.parse(localDataLegacy);
-                this.themeColor = localThemeLegacy || '#b38b59';
-                this.saveSettingsToServer(); // 保存到服务器
-                
-                // 可选：迁移后清除本地缓存，避免混淆
-                // localStorage.removeItem('general_map_data_v2');
+                try {
+                    this.mapData = JSON.parse(localDataLegacy);
+                    this.themeColor = localThemeLegacy || '#b38b59';
+                    this.saveSettingsToServer(); // 立即保存迁移的数据
+                } catch (e) {
+                    console.error("迁移失败，使用默认数据", e);
+                    this.mapData = JSON.parse(JSON.stringify(defaultMapData));
+                }
             } else {
                 // 情况B：全新安装，使用默认数据
                 console.log("[General Map] 加载默认数据...");
@@ -75,9 +78,8 @@ window.GeneralMap = {
         } else {
             // 情况C：服务器有数据，直接使用
             console.log("[General Map] 从服务器加载数据成功。");
-            // 合并数据防止字段缺失
             this.mapData = settings.mapData || JSON.parse(JSON.stringify(defaultMapData));
-            // 简单的合并策略：确保新版默认地点存在
+            // 合并默认数据防止字段缺失
             for (let key in defaultMapData) {
                 if (!this.mapData[key]) this.mapData[key] = defaultMapData[key];
             }
@@ -85,24 +87,36 @@ window.GeneralMap = {
         }
 
         // 应用主题
-        this.applyTheme(this.themeColor, false); // false 表示不重复保存
+        this.applyTheme(this.themeColor, false);
         
         // 更新 UI 拾色器
         const picker = document.getElementById('theme-color-picker');
         if(picker) picker.value = this.themeColor;
     },
 
-    // 保存设置到服务器
+    // [关键修复] 保存设置到服务器
+    // 不再依赖 stContext.saveExtensionSettings，而是使用全局变量
     saveSettingsToServer: function() {
-        if (!stContext) return;
-        
         const dataToSave = {
             mapData: this.mapData,
             themeColor: this.themeColor
         };
         
-        stContext.saveExtensionSettings(extensionName, dataToSave);
-        console.log("[General Map] 数据已保存至服务器。");
+        // 检查全局变量是否存在 (SillyTavern 标准 API)
+        if (typeof extension_settings !== 'undefined') {
+            // 1. 写入全局对象
+            extension_settings[extensionName] = dataToSave;
+            
+            // 2. 调用全局保存函数
+            if (typeof saveExtensionSettings === 'function') {
+                saveExtensionSettings();
+                console.log("[General Map] 数据已保存 (Global API)。");
+            } else {
+                console.warn("[General Map] 警告：找不到 saveExtensionSettings 全局函数，数据可能未持久化。");
+            }
+        } else {
+            console.error("[General Map] 严重错误：找不到 extension_settings 全局对象，无法保存数据。");
+        }
     },
 
     // ==========================================
@@ -122,7 +136,7 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 数据操作 (修改后调用 saveSettingsToServer)
+    // 数据操作
     // ==========================================
     
     resetData: function() {
@@ -370,7 +384,7 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 字段更新 (都调用 saveSettingsToServer)
+    // 字段更新
     // ==========================================
     toggleEditMode: function() {
         this.isEditing = !this.isEditing;
@@ -433,8 +447,6 @@ window.GeneralMap = {
         }
     },
     
-    // 背景图 - 保留 LocalStorage 方式（因为它可能很大），也可以存 Server，这里暂存 Local
-    // 如果您希望背景图也全端同步，需要把它也放入 mapData，但 Base64 大图可能导致配置文件过大。
     changeBackground: function(input) {
         if (input.files && input.files[0]) {
             const reader = new FileReader();
@@ -448,7 +460,6 @@ window.GeneralMap = {
     },
 
     loadBackground: function() {
-        // 优先读本地缓存，如果想同步，可以把这个逻辑也改到 Server
         const bg = localStorage.getItem('general_map_bg_v2');
         if (bg) document.getElementById('general-map-container').style.backgroundImage = `url(${bg})`;
     },
@@ -526,7 +537,7 @@ window.GeneralMap = {
 };
 
 // ==========================================
-// 初始化逻辑 (Wait for ST Context)
+// 初始化逻辑
 // ==========================================
 
 const initInterval = setInterval(() => {
@@ -538,7 +549,7 @@ const initInterval = setInterval(() => {
 }, 500);
 
 async function initializeExtension() {
-    console.log("[General Map] Initializing V5 (Server Sync)...");
+    console.log("[General Map] Initializing V6 (Compatible Mode)...");
 
     $('#general-map-panel').remove();
     $('#general-toggle-btn').remove();
