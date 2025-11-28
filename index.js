@@ -4,6 +4,43 @@ const extensionPath = `scripts/extensions/third-party/${extensionName}`;
 let stContext = null;
 
 // ==========================================
+// [新增] 圖片壓縮工具函數
+// 解決手機端上傳大圖導致 localStorage 爆滿無法保存的問題
+// ==========================================
+function compressImage(file, maxWidth = 800, quality = 0.7) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
+
+                // 保持比例縮放
+                if (width > maxWidth) {
+                    height = Math.round(height * (maxWidth / width));
+                    width = maxWidth;
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // 轉換為 JPEG 並壓縮質量 (quality 0-1)
+                const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                resolve(dataUrl);
+            };
+            img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
+    });
+}
+
+// ==========================================
 // 1. 默认数据定义 (Default Data)
 // ==========================================
 const defaultMapData = {
@@ -83,8 +120,18 @@ window.GeneralMap = {
         }
     },
 
+    // [修改] 增加错误捕获，防止存儲滿時無反饋
     saveData: function() {
-        localStorage.setItem('general_map_data_v2', JSON.stringify(this.mapData));
+        try {
+            localStorage.setItem('general_map_data_v2', JSON.stringify(this.mapData));
+        } catch (e) {
+            console.error("保存失敗", e);
+            if (e.name === 'QuotaExceededError' || e.message.includes('exceeded')) {
+                alert("保存失敗：存儲空間不足！\n原因：圖片可能太多或太大。\n建議：刪除一些不需要的地點或圖片。");
+            } else {
+                alert("保存數據時發生未知錯誤。");
+            }
+        }
     },
 
     resetData: function() {
@@ -386,29 +433,38 @@ window.GeneralMap = {
         }
     },
 
+    // [修改] 使用壓縮函數處理上傳的圖片
     uploadImage: function(id, field, input) {
         if (input.files && input.files[0]) {
             const file = input.files[0];
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                this.mapData[id][field] = e.target.result;
+            
+            // 壓縮到寬度 600px，質量 0.6
+            compressImage(file, 600, 0.6).then((base64Data) => {
+                this.mapData[id][field] = base64Data;
                 this.saveData();
+                
+                // 更新 UI
                 if (field === 'image') this.renderPopup(id);
                 if (field === 'internalImage') this.renderInterior(id);
-            };
-            reader.readAsDataURL(file);
+            }).catch(err => {
+                console.error("圖片處理失敗", err);
+                alert("圖片處理失敗，請重試");
+            });
         }
     },
     
+    // [修改] 使用壓縮函數處理背景圖
     changeBackground: function(input) {
         if (input.files && input.files[0]) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const bgData = e.target.result;
+            // 背景圖允許稍大，寬度 1024px，質量 0.7
+            compressImage(input.files[0], 1024, 0.7).then((bgData) => {
                 document.getElementById('general-map-container').style.backgroundImage = `url(${bgData})`;
-                localStorage.setItem('general_map_bg_v2', bgData);
-            }
-            reader.readAsDataURL(input.files[0]);
+                try {
+                    localStorage.setItem('general_map_bg_v2', bgData);
+                } catch (e) {
+                     alert("背景圖保存失敗：存儲空間已滿。");
+                }
+            });
         }
     },
 
