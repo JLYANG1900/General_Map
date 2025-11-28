@@ -3,6 +3,7 @@
     
     <!-- 顶部控制栏 -->
     <div class="controls-bar">
+        <!-- 编辑开关 -->
         <div class="edit-toggle-wrapper">
             <label class="switch">
                 <input type="checkbox" id="edit-mode-toggle" onchange="window.GeneralMap.toggleEditMode()">
@@ -11,9 +12,21 @@
             <span id="edit-mode-label">✏️ 编辑模式</span>
         </div>
 
+        <!-- 新增：添加地点按钮 -->
+        <button class="general-btn" onclick="window.GeneralMap.addNewPin()">📍 新增地点</button>
+
+        <!-- 数据重置 -->
         <button class="general-btn" onclick="window.GeneralMap.resetData()">↺ 重置数据</button>
-        <button class="general-btn" onclick="document.getElementById('bg-upload').click()">📂 更换地图背景...</button>
+        
+        <!-- 背景更换 -->
+        <button class="general-btn" onclick="document.getElementById('bg-upload').click()">📂 更换背景...</button>
         <input type="file" id="bg-upload" accept="image/*" style="display:none;" onchange="window.GeneralMap.changeBackground(this)">
+
+        <!-- 新增：主题颜色选择器 -->
+        <div style="display: flex; align-items: center; gap: 5px; margin-left: 5px;">
+            <span>🎨 主题色:</span>
+            <input type="color" id="theme-color-picker" value="#b38b59" onchange="window.GeneralMap.applyTheme(this.value)" style="border:none; padding:0; background:none; cursor:pointer;">
+        </div>
     </div>
 
     <h2 id="subtitle-text">双击地标查看详情，长按拖拽移动 (编辑模式下可直接拖拽)</h2>
@@ -32,11 +45,11 @@
     <!-- 遮罩层 -->
     <div class="popup-overlay" id="general-overlay" onclick="window.GeneralMap.closeAllPopups()"></div>
 
-    <!-- 出行菜单 (保持原有逻辑) -->
+    <!-- 出行菜单 -->
     <div id="travel-menu-overlay" onclick="if(event.target === this) window.GeneralMap.closeTravelMenu()">
         <div class="travel-menu-box">
             <span class="close-btn" onclick="window.GeneralMap.closeTravelMenu()">&times;</span>
-            <div id="travel-title" style="color:#e0c5a1; margin-bottom:20px;">前往目的地</div>
+            <div id="travel-title" style="color:var(--theme-color); margin-bottom:20px;">前往目的地</div>
             <div id="travel-content" class="travel-options"></div>
         </div>
     </div>
