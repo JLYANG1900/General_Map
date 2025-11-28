@@ -10,7 +10,7 @@ This plugin is designed exclusively for all SillyTavern users, aiming to provide
 :bulb: 完全可视化编辑：开启“编辑模式”后，您可以直接在地图上新增地标、拖拽坐标、修改名称与描述。所有图片（含背景、封面、内部图）均支持本地上传。
 Fully Visual Editing: Activate “Edit Mode” to directly add landmarks, drag coordinates, and modify names/descriptions on the map. All images (including backgrounds, covers, and interior shots) support local uploads.
 
-:tools: 深度场景构建：支持为任何地点（如豪宅、基地）创建多层级内部视图。您可以自由添加楼层或房间，打造从宏观世界到微观内饰的完整探索体验。
+:gear: 深度场景构建：支持为任何地点（如豪宅、基地）创建多层级内部视图。您可以自由添加楼层或房间，打造从宏观世界到微观内饰的完整探索体验。
 Deep Scene Construction: Create multi-level interior views for any location (e.g., mansions, bases). Freely add floors or rooms to craft a complete exploration experience—from macro-worlds to micro-interiors.
 
 :art:个性化 UI：内置主题色引擎，您可以实时调整界面主色调以匹配不同的地图氛围。
@@ -22,7 +22,7 @@ Immersive Quick Reply Interaction: Integrated with an intelligent travel system.
 :computer: 重启酒馆后，插件依然记得你所有的自定义编辑，除非你手动点击重置数据。
 After restarting Silly Tavern, the plugin remembers all your custom edits unless you manually click to reset data.
 
-:mobile_phone: 电脑端与移动端都可以使用。但是电脑端和移动端的记忆是各自独立的！因为数据存储在你的浏览器里，而不是服务器上。
+:computer:电脑端与移动端都可以使用。但是电脑端和移动端的记忆是各自独立的！因为数据存储在你的浏览器里，而不是服务器上。
 Available on both desktop and mobile. However, desktop and mobile sessions maintain independent memories! Data is stored locally in your browser, not on servers.
 
 解决方法：我设置了导入导出功能。你可以在电脑或手机上制作完地图后，把json文件导出传到另一端导入。这样两边就手动同步了。
