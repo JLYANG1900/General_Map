@@ -230,7 +230,6 @@ window.GeneralMap = {
             
             const a = document.createElement('a');
             a.href = url;
-            // 文件名包含日期
             const date = new Date().toISOString().slice(0,10);
             a.download = `General_Map_Backup_${date}.json`;
             document.body.appendChild(a);
@@ -249,14 +248,13 @@ window.GeneralMap = {
             reader.onload = async (e) => {
                 try {
                     const json = JSON.parse(e.target.result);
-                    // 简单验证格式
                     if (typeof json !== 'object' || Object.keys(json).length === 0) {
                         throw new Error("无效的地图数据格式");
                     }
 
                     if (confirm("导入备份将覆盖当前的地图数据，确定继续吗？")) {
                         this.mapData = json;
-                        await this.saveData(); // 保存到 IndexedDB
+                        await this.saveData(); 
                         this.renderMapPins();
                         this.closeAllPopups();
                         alert("备份导入成功！");
@@ -265,7 +263,6 @@ window.GeneralMap = {
                     console.error(err);
                     alert("导入失败：文件格式错误或已损坏。");
                 }
-                // 清空 input 允许重复导入同一文件
                 input.value = '';
             };
             reader.readAsText(input.files[0]);
@@ -273,7 +270,7 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 地图渲染
+    // 地图渲染与交互 (包含移动端拖拽支持)
     // ==========================================
     renderMapPins: function() {
         const container = document.getElementById('general-map-container');
@@ -286,7 +283,6 @@ window.GeneralMap = {
             div.style.left = loc.x;
             div.style.top = loc.y;
             if (loc.color) div.style.color = loc.color;
-            // 使用 textContent 避免 XSS，或者 Sanitize
             div.innerHTML = `<span class="label">${Sanitize.encode(loc.name)}</span>`;
             this.bindPinEvents(div, loc.id);
             container.appendChild(div);
@@ -324,9 +320,10 @@ window.GeneralMap = {
     bindPinEvents: function(elm, id) {
         let isDragging = false;
         let startX, startY, initialLeft, initialTop;
-        let hasMoved = false;
+        let hasMoved = false; // 用于区分点击和拖拽
         const container = document.getElementById('general-map-container');
 
+        // --- 鼠标事件 (PC) ---
         elm.onmousedown = (e) => {
             if (this.isEditing) {
                 isDragging = true;
@@ -335,25 +332,28 @@ window.GeneralMap = {
                 startY = e.clientY;
                 initialLeft = elm.offsetLeft;
                 initialTop = elm.offsetTop;
+                hasMoved = false;
                 e.preventDefault();
                 e.stopPropagation();
             }
         };
 
-        const moveHandler = (e) => {
+        const mouseMoveHandler = (e) => {
             if (!isDragging) return;
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
+            
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
+
             let newLeft = initialLeft + dx;
             let newTop = initialTop + dy;
             newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth));
             newTop = Math.max(0, Math.min(newTop, container.offsetHeight));
             elm.style.left = newLeft + 'px';
             elm.style.top = newTop + 'px';
-            hasMoved = true;
         };
 
-        const upHandler = () => {
+        const mouseUpHandler = () => {
             if (isDragging && hasMoved) {
                 const pctX = (elm.offsetLeft / container.offsetWidth * 100).toFixed(1) + '%';
                 const pctY = (elm.offsetTop / container.offsetHeight * 100).toFixed(1) + '%';
@@ -365,11 +365,80 @@ window.GeneralMap = {
             elm.classList.remove('dragging');
         };
 
-        document.addEventListener('mousemove', moveHandler);
-        document.addEventListener('mouseup', upHandler);
+        // --- 触摸事件 (移动端) [新增] ---
+        const touchStartHandler = (e) => {
+            if (this.isEditing) {
+                isDragging = true;
+                elm.classList.add('dragging');
+                // 获取第一个触摸点
+                const touch = e.touches[0];
+                startX = touch.clientX;
+                startY = touch.clientY;
+                initialLeft = elm.offsetLeft;
+                initialTop = elm.offsetTop;
+                hasMoved = false;
+                // 注意：这里不要立即 preventDefault，否则无法触发点击
+            }
+        };
 
+        const touchMoveHandler = (e) => {
+            if (!isDragging) return;
+            
+            const touch = e.touches[0];
+            const dx = touch.clientX - startX;
+            const dy = touch.clientY - startY;
+            
+            // 只有移动超过阈值才视为拖拽，并阻止滚动
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                hasMoved = true;
+                if (e.cancelable) e.preventDefault(); // 阻止屏幕跟随手指滚动
+            }
+
+            let newLeft = initialLeft + dx;
+            let newTop = initialTop + dy;
+            
+            // 边界检查
+            newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth));
+            newTop = Math.max(0, Math.min(newTop, container.offsetHeight));
+            
+            elm.style.left = newLeft + 'px';
+            elm.style.top = newTop + 'px';
+        };
+
+        const touchEndHandler = (e) => {
+            if (!isDragging) return;
+            
+            if (hasMoved) {
+                const pctX = (elm.offsetLeft / container.offsetWidth * 100).toFixed(1) + '%';
+                const pctY = (elm.offsetTop / container.offsetHeight * 100).toFixed(1) + '%';
+                this.mapData[id].x = pctX;
+                this.mapData[id].y = pctY;
+                this.saveData();
+            }
+            
+            isDragging = false;
+            elm.classList.remove('dragging');
+        };
+
+        // 绑定 PC 鼠标全局监听
+        document.addEventListener('mousemove', mouseMoveHandler);
+        document.addEventListener('mouseup', mouseUpHandler);
+
+        // 绑定 移动端 触摸监听 (passive: false 允许 preventDefault)
+        elm.addEventListener('touchstart', touchStartHandler, { passive: false });
+        elm.addEventListener('touchmove', touchMoveHandler, { passive: false });
+        elm.addEventListener('touchend', touchEndHandler);
+        elm.addEventListener('touchcancel', touchEndHandler);
+
+        // 点击事件：如果是拖拽结束，阻止点击弹窗
         elm.onclick = (e) => {
-            if (hasMoved) { hasMoved = false; return; }
+            if (hasMoved) { 
+                hasMoved = false; 
+                e.preventDefault(); 
+                e.stopPropagation();
+                return; 
+            }
+            
             if (id === 'other-places') {
                 this.showCustomTravelPopup();
             } else {
@@ -378,7 +447,7 @@ window.GeneralMap = {
         };
         
         elm.ondblclick = (e) => {
-             this.renderPopup(id);
+            if (!hasMoved) this.renderPopup(id);
         }
     },
 
@@ -390,7 +459,6 @@ window.GeneralMap = {
         const content = document.getElementById('popup-content');
         const overlay = document.getElementById('general-overlay');
 
-        // [修改] 使用 Sanitize.encode 过滤输出内容
         let html = `
             <div style="display:flex; justify-content:space-between; align-items:start;">
                 <h3 contenteditable="${this.isEditing}" class="editable-text" style="flex:1" onblur="window.GeneralMap.updateField('${id}', 'name', this.innerText)">${Sanitize.encode(data.name)}</h3>
@@ -423,7 +491,6 @@ window.GeneralMap = {
             html += `<button class="general-btn small" onclick="window.GeneralMap.addFloor('${id}')">➕ 添加楼层/区域</button>`;
         }
         
-        // [修改] 名字也要转义
         html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(data.name)}')">🚀 前往此处</button>`;
         html += `</div>`;
 
@@ -437,7 +504,6 @@ window.GeneralMap = {
         const content = document.getElementById('popup-content');
         if (!data.floors) data.floors = [];
 
-        // [修改] 转义
         let html = `
             <h3><span onclick="window.GeneralMap.renderPopup('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${Sanitize.encode(data.name)} - 内部</h3>
             <div class="interior-container">
@@ -450,7 +516,6 @@ window.GeneralMap = {
 
         html += `<div class="floor-nav">`;
         data.floors.forEach((floor, index) => {
-            // [修改] 转义 floor.name
             html += `
                 <div style="display:flex; align-items:center; gap:5px; margin-bottom:4px;">
                     <button class="floor-btn" style="flex:1" onclick="window.GeneralMap.showFloorDetail('${id}', ${index})">
@@ -480,7 +545,6 @@ window.GeneralMap = {
         const floor = this.mapData[id].floors[floorIndex];
         const content = document.getElementById('popup-content');
         
-        // [修改] 转义 floor.name, floor.content
         let html = `
             <h3><span onclick="window.GeneralMap.renderInterior('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${Sanitize.encode(floor.name)}</h3>
             <p style="font-size:12px; color:#888;">名称 (可编辑):</p>
@@ -616,7 +680,6 @@ window.GeneralMap = {
         this.currentDestination = destination;
         const box = $('#travel-menu-overlay');
         
-        // 目的地名称也需要转义显示
         box.find('.travel-options').html(`
             <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">目的地：${Sanitize.encode(destination)}</div>
             <button class="general-btn" onclick="window.GeneralMap.confirmTravel(true)">👤 独自前往</button>
@@ -673,7 +736,7 @@ const initInterval = setInterval(() => {
 }, 500);
 
 async function initializeExtension() {
-    console.log("[General Map] Initializing V5 (Secured + Export)...");
+    console.log("[General Map] Initializing V6 (Mobile Drag)...");
 
     $('#general-map-panel').remove();
     $('#general-toggle-btn').remove();
@@ -704,7 +767,6 @@ async function initializeExtension() {
         if (!response.ok) throw new Error("Map file not found");
         const htmlContent = await response.text();
         $('#general-content-area').html(htmlContent);
-        // 初始化现在是异步的
         await window.GeneralMap.init();
 
     } catch (e) {
