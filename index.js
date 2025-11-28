@@ -26,118 +26,73 @@ window.GeneralMap = {
     mapData: {},         
     isEditing: false,    
     currentDestination: '',
-    themeColor: '#b38b59', 
-    backgroundImage: null, // 新增：背景图也存入内存状态
+    themeColor: '#b38b59', // 默认主题色
     
     // 初始化
     init: function() {
-        // 尝试加载数据
-        this.loadSettingsFromServer();
-        
+        this.loadTheme(); // 优先加载主题
+        this.loadData();
         this.renderMapPins();
-        // 渲染背景 (注意：现在背景也是从 Server 加载的)
-        this.renderBackground(); 
+        this.loadBackground();
     },
 
     // ==========================================
-    // 服务端数据同步 (Full Sync V7)
+    // 新增：主题色管理
     // ==========================================
-    
-    // 从服务器加载设置
-    loadSettingsFromServer: function() {
-        // 1. 尝试从全局 extension_settings 获取
-        let settings = null;
-        if (typeof extension_settings !== 'undefined' && extension_settings[extensionName]) {
-            settings = extension_settings[extensionName];
-        } else if (stContext && stContext.extensionSettings && stContext.extensionSettings[extensionName]) {
-            settings = stContext.extensionSettings[extensionName];
-        }
-
-        if (!settings || Object.keys(settings).length === 0) {
-            // 没有服务器数据，尝试迁移本地旧数据（为了兼容）
-            const localBg = localStorage.getItem('general_map_bg_v2');
-            const localData = localStorage.getItem('general_map_data_v2');
-            const localTheme = localStorage.getItem('general_map_theme');
-
-            console.log("[General Map] 未检测到服务器数据，加载默认/本地缓存...");
-            
-            this.mapData = localData ? JSON.parse(localData) : JSON.parse(JSON.stringify(defaultMapData));
-            this.themeColor = localTheme || '#b38b59';
-            this.backgroundImage = localBg || null; 
-
-            // 立即尝试同步一次到服务器，确保存档建立
-            if (localData || localBg) {
-                console.log("[General Map] 正在将本地旧缓存迁移至服务器...");
-                this.saveSettingsToServer();
-            }
-        } else {
-            // 有服务器数据
-            console.log("[General Map] 已从服务器同步数据。");
-            this.mapData = settings.mapData || JSON.parse(JSON.stringify(defaultMapData));
-            this.themeColor = settings.themeColor || '#b38b59';
-            // 关键：从服务器设置中读取背景图
-            this.backgroundImage = settings.backgroundImage || null;
-
-            // 合并默认数据防止字段缺失
-            for (let key in defaultMapData) {
-                if (!this.mapData[key]) this.mapData[key] = defaultMapData[key];
-            }
-        }
-
-        // 应用读取到的设置
-        this.applyTheme(this.themeColor, false);
-        const picker = document.getElementById('theme-color-picker');
-        if(picker) picker.value = this.themeColor;
-    },
-
-    // 保存设置到服务器 (包含背景图)
-    saveSettingsToServer: function() {
-        const dataToSave = {
-            mapData: this.mapData,
-            themeColor: this.themeColor,
-            backgroundImage: this.backgroundImage // 新增：保存背景图到服务器
-        };
-        
-        if (typeof extension_settings !== 'undefined') {
-            extension_settings[extensionName] = dataToSave;
-            
-            if (typeof saveExtensionSettings === 'function') {
-                saveExtensionSettings();
-                console.log("[General Map] 全量数据已保存至服务器 (含背景)。");
-            }
+    loadTheme: function() {
+        const savedColor = localStorage.getItem('general_map_theme');
+        if (savedColor) {
+            this.applyTheme(savedColor);
+            // 更新拾色器的显示值
+            const picker = document.getElementById('theme-color-picker');
+            if(picker) picker.value = savedColor;
         }
     },
 
-    // ==========================================
-    // 主题色管理
-    // ==========================================
-    applyTheme: function(color, shouldSave = true) {
+    applyTheme: function(color) {
         this.themeColor = color;
+        // 设置 CSS 变量
         document.documentElement.style.setProperty('--theme-color', color);
         
+        // 计算 RGB 值以用于半透明背景 (用于 CSS 变量 --theme-bg-opacity)
         const r = parseInt(color.substr(1, 2), 16);
         const g = parseInt(color.substr(3, 2), 16);
         const b = parseInt(color.substr(5, 2), 16);
         document.documentElement.style.setProperty('--theme-bg-opacity', `rgba(${r}, ${g}, ${b}, 0.3)`);
         
-        if (shouldSave) this.saveSettingsToServer();
+        localStorage.setItem('general_map_theme', color);
     },
 
     // ==========================================
-    // 数据操作
+    // 数据加载与保存
     // ==========================================
-    resetData: function() {
-        if(confirm("确定要重置所有地图数据吗？\n注意：这将清除服务器上的所有自定义设置（包括背景图）。")) {
+    loadData: function() {
+        const saved = localStorage.getItem('general_map_data_v2');
+        if (saved) {
+            try {
+                this.mapData = JSON.parse(saved);
+                for (let key in defaultMapData) {
+                    if (!this.mapData[key]) this.mapData[key] = defaultMapData[key];
+                }
+            } catch (e) {
+                console.error("数据损坏，重置为默认", e);
+                this.mapData = JSON.parse(JSON.stringify(defaultMapData));
+            }
+        } else {
             this.mapData = JSON.parse(JSON.stringify(defaultMapData));
-            this.themeColor = '#b38b59';
-            this.backgroundImage = null; // 重置背景
-            
-            this.saveSettingsToServer();
+        }
+    },
+
+    saveData: function() {
+        localStorage.setItem('general_map_data_v2', JSON.stringify(this.mapData));
+    },
+
+    resetData: function() {
+        if(confirm("确定要重置所有地图数据吗？所有自定义名称、图片和楼层都将丢失。")) {
+            localStorage.removeItem('general_map_data_v2');
+            this.loadData();
             this.renderMapPins();
-            this.renderBackground();
-            this.applyTheme(this.themeColor);
-            
-            alert("数据已重置并同步至服务器。其他设备请刷新页面。");
+            alert("数据已重置。");
         }
     },
 
@@ -146,7 +101,6 @@ window.GeneralMap = {
     // ==========================================
     renderMapPins: function() {
         const container = document.getElementById('general-map-container');
-        if (!container) return;
         container.querySelectorAll('.location').forEach(el => el.remove());
 
         Object.values(this.mapData).forEach(loc => {
@@ -155,6 +109,7 @@ window.GeneralMap = {
             div.id = `pin-${loc.id}`;
             div.style.left = loc.x;
             div.style.top = loc.y;
+            // 如果地点有自定义颜色则使用，否则跟随主题色（可选，这里保持原有逻辑）
             if (loc.color) div.style.color = loc.color;
             
             div.innerHTML = `<span class="label">${loc.name}</span>`;
@@ -164,7 +119,9 @@ window.GeneralMap = {
         });
     },
 
+    // 新增：添加新地点
     addNewPin: function() {
+        // 自动开启编辑模式方便拖拽
         if (!this.isEditing) {
             document.getElementById('edit-mode-toggle').click();
         }
@@ -177,17 +134,20 @@ window.GeneralMap = {
             y: "50%", 
             desc: "点击编辑描述", 
             type: "simple", 
-            color: this.themeColor 
+            color: this.themeColor // 默认使用当前主题色
         };
-        this.saveSettingsToServer();
+        this.saveData();
         this.renderMapPins();
+        
+        // 自动打开该地点的弹窗
         setTimeout(() => this.renderPopup(id), 100);
     },
 
+    // 新增：删除地点
     deletePin: function(id) {
         if (confirm("确定要永久删除这个地点吗？")) {
             delete this.mapData[id];
-            this.saveSettingsToServer();
+            this.saveData();
             this.renderMapPins();
             this.closeAllPopups();
         }
@@ -231,7 +191,7 @@ window.GeneralMap = {
                 const pctY = (elm.offsetTop / container.offsetHeight * 100).toFixed(1) + '%';
                 this.mapData[id].x = pctX;
                 this.mapData[id].y = pctY;
-                this.saveSettingsToServer();
+                this.saveData();
             }
             isDragging = false;
             elm.classList.remove('dragging');
@@ -254,6 +214,7 @@ window.GeneralMap = {
         }
     },
 
+    // 渲染详情弹窗
     renderPopup: function(id) {
         const data = this.mapData[id];
         if (!data) return;
@@ -375,10 +336,11 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 字段更新
+    // 数据更新辅助
     // ==========================================
     toggleEditMode: function() {
         this.isEditing = !this.isEditing;
+        // 同步 UI 状态
         const checkbox = document.getElementById('edit-mode-toggle');
         if (checkbox) checkbox.checked = this.isEditing;
         
@@ -398,28 +360,28 @@ window.GeneralMap = {
     updateField: function(id, field, value) {
         if (!this.mapData[id]) return;
         this.mapData[id][field] = value;
-        this.saveSettingsToServer();
+        this.saveData();
         if (field === 'name') this.renderMapPins();
     },
 
     updateFloor: function(id, floorIndex, field, value) {
         if (!this.mapData[id] || !this.mapData[id].floors[floorIndex]) return;
         this.mapData[id].floors[floorIndex][field] = value;
-        this.saveSettingsToServer();
+        this.saveData();
     },
 
     addFloor: function(id) {
         if (!this.mapData[id].floors) this.mapData[id].floors = [];
         this.mapData[id].floors.push({ name: "新区域 " + (this.mapData[id].floors.length + 1), content: "描述..." });
         this.mapData[id].type = 'complex'; 
-        this.saveSettingsToServer();
+        this.saveData();
         this.renderInterior(id); 
     },
 
     deleteFloor: function(id, index) {
         if(confirm("确定删除吗？")) {
             this.mapData[id].floors.splice(index, 1);
-            this.saveSettingsToServer();
+            this.saveData();
             this.renderInterior(id);
         }
     },
@@ -430,7 +392,7 @@ window.GeneralMap = {
             const reader = new FileReader();
             reader.onload = (e) => {
                 this.mapData[id][field] = e.target.result;
-                this.saveSettingsToServer();
+                this.saveData();
                 if (field === 'image') this.renderPopup(id);
                 if (field === 'internalImage') this.renderInterior(id);
             };
@@ -438,39 +400,25 @@ window.GeneralMap = {
         }
     },
     
-    // 背景图 - 已修改为上传到服务器
     changeBackground: function(input) {
         if (input.files && input.files[0]) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const bgData = e.target.result;
-                this.backgroundImage = bgData; // 更新状态
-                this.renderBackground();       // 渲染
-                this.saveSettingsToServer();   // 保存到服务器
+                document.getElementById('general-map-container').style.backgroundImage = `url(${bgData})`;
+                localStorage.setItem('general_map_bg_v2', bgData);
             }
             reader.readAsDataURL(input.files[0]);
         }
     },
 
-    renderBackground: function() {
-        // 优先使用同步的背景，否则使用默认 CSS 定义的
-        const container = document.getElementById('general-map-container');
-        if (this.backgroundImage) {
-            container.style.backgroundImage = `url(${this.backgroundImage})`;
-        } else {
-            // 如果没有自定义背景，保持 style.css 里的默认背景
-            // 这里清除 inline style，让 css 生效
-            container.style.backgroundImage = ''; 
-        }
-    },
-
-    // 废弃：不再只从本地加载
     loadBackground: function() {
-        // 保留此空函数以防调用报错，逻辑已移至 renderBackground
+        const bg = localStorage.getItem('general_map_bg_v2');
+        if (bg) document.getElementById('general-map-container').style.backgroundImage = `url(${bg})`;
     },
 
     // ==========================================
-    // 出行逻辑
+    // 出行逻辑 (Travel Logic)
     // ==========================================
     
     closeAllPopups: function() {
@@ -554,7 +502,7 @@ const initInterval = setInterval(() => {
 }, 500);
 
 async function initializeExtension() {
-    console.log("[General Map] Initializing V7 (Full Sync)...");
+    console.log("[General Map] Initializing V4...");
 
     $('#general-map-panel').remove();
     $('#general-toggle-btn').remove();
