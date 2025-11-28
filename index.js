@@ -23,18 +23,49 @@ const defaultMapData = {
 
 // 全局状态
 window.GeneralMap = {
-    mapData: {},         // 当前运行时的地图数据
-    isEditing: false,    // 是否处于编辑模式
+    mapData: {},         
+    isEditing: false,    
     currentDestination: '',
+    themeColor: '#b38b59', // 默认主题色
     
     // 初始化
     init: function() {
+        this.loadTheme(); // 优先加载主题
         this.loadData();
         this.renderMapPins();
         this.loadBackground();
     },
 
-    // 加载数据
+    // ==========================================
+    // 新增：主题色管理
+    // ==========================================
+    loadTheme: function() {
+        const savedColor = localStorage.getItem('general_map_theme');
+        if (savedColor) {
+            this.applyTheme(savedColor);
+            // 更新拾色器的显示值
+            const picker = document.getElementById('theme-color-picker');
+            if(picker) picker.value = savedColor;
+        }
+    },
+
+    applyTheme: function(color) {
+        this.themeColor = color;
+        // 设置 CSS 变量
+        document.documentElement.style.setProperty('--theme-color', color);
+        
+        // 计算 RGB 值以用于半透明背景 (用于 CSS 变量 --theme-bg-opacity)
+        const r = parseInt(color.substr(1, 2), 16);
+        const g = parseInt(color.substr(3, 2), 16);
+        const b = parseInt(color.substr(5, 2), 16);
+        document.documentElement.style.setProperty('--theme-bg-opacity', `rgba(${r}, ${g}, ${b}, 0.3)`);
+        
+        localStorage.setItem('general_map_theme', color);
+    },
+
+    // ==========================================
+    // 数据加载与保存
+    // ==========================================
     loadData: function() {
         const saved = localStorage.getItem('general_map_data_v2');
         if (saved) {
@@ -65,7 +96,9 @@ window.GeneralMap = {
         }
     },
 
-    // 渲染地图上的大头针
+    // ==========================================
+    // 地图渲染与交互
+    // ==========================================
     renderMapPins: function() {
         const container = document.getElementById('general-map-container');
         container.querySelectorAll('.location').forEach(el => el.remove());
@@ -76,11 +109,48 @@ window.GeneralMap = {
             div.id = `pin-${loc.id}`;
             div.style.left = loc.x;
             div.style.top = loc.y;
+            // 如果地点有自定义颜色则使用，否则跟随主题色（可选，这里保持原有逻辑）
             if (loc.color) div.style.color = loc.color;
+            
             div.innerHTML = `<span class="label">${loc.name}</span>`;
+            
             this.bindPinEvents(div, loc.id);
             container.appendChild(div);
         });
+    },
+
+    // 新增：添加新地点
+    addNewPin: function() {
+        // 自动开启编辑模式方便拖拽
+        if (!this.isEditing) {
+            document.getElementById('edit-mode-toggle').click();
+        }
+
+        const id = 'custom-' + Date.now();
+        this.mapData[id] = {
+            id: id,
+            name: "新地点",
+            x: "50%", 
+            y: "50%", 
+            desc: "点击编辑描述", 
+            type: "simple", 
+            color: this.themeColor // 默认使用当前主题色
+        };
+        this.saveData();
+        this.renderMapPins();
+        
+        // 自动打开该地点的弹窗
+        setTimeout(() => this.renderPopup(id), 100);
+    },
+
+    // 新增：删除地点
+    deletePin: function(id) {
+        if (confirm("确定要永久删除这个地点吗？")) {
+            delete this.mapData[id];
+            this.saveData();
+            this.renderMapPins();
+            this.closeAllPopups();
+        }
     },
 
     bindPinEvents: function(elm, id) {
@@ -154,7 +224,11 @@ window.GeneralMap = {
         const overlay = document.getElementById('general-overlay');
 
         let html = `
-            <h3 contenteditable="${this.isEditing}" class="editable-text" onblur="window.GeneralMap.updateField('${id}', 'name', this.innerText)">${data.name}</h3>
+            <div style="display:flex; justify-content:space-between; align-items:start;">
+                <h3 contenteditable="${this.isEditing}" class="editable-text" style="flex:1" onblur="window.GeneralMap.updateField('${id}', 'name', this.innerText)">${data.name}</h3>
+                ${this.isEditing ? `<button class="general-btn small danger" onclick="window.GeneralMap.deletePin('${id}')">🗑️ 删除</button>` : ''}
+            </div>
+            
             <p contenteditable="${this.isEditing}" class="editable-text" onblur="window.GeneralMap.updateField('${id}', 'desc', this.innerText)">${data.desc || "暂无描述"}</p>
         `;
 
@@ -181,7 +255,6 @@ window.GeneralMap = {
             html += `<button class="general-btn small" onclick="window.GeneralMap.addFloor('${id}')">➕ 添加楼层/区域</button>`;
         }
         
-        // 关键按钮：前往此处
         html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${data.name}')">🚀 前往此处</button>`;
         html += `</div>`;
 
@@ -263,16 +336,20 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 数据更新
+    // 数据更新辅助
     // ==========================================
     toggleEditMode: function() {
         this.isEditing = !this.isEditing;
+        // 同步 UI 状态
+        const checkbox = document.getElementById('edit-mode-toggle');
+        if (checkbox) checkbox.checked = this.isEditing;
+        
         const body = document.body;
         const label = document.getElementById('edit-mode-label');
         if (this.isEditing) {
             body.classList.add('general-editing-active');
             label.innerText = "✏️ 编辑中...";
-            label.style.color = "#b38b59";
+            label.style.color = this.themeColor;
         } else {
             body.classList.remove('general-editing-active');
             label.innerText = "✏️ 编辑模式";
@@ -350,7 +427,6 @@ window.GeneralMap = {
         $('#travel-menu-overlay').hide();
     },
     
-    // 关闭出行菜单，但不关闭底层详情（如果需要返回的话）
     closeTravelMenu: function() {
         $('#travel-menu-overlay').hide();
     },
@@ -362,7 +438,6 @@ window.GeneralMap = {
             <input type="text" id="custom-dest-input" class="travel-input" placeholder="例如：海边">
             <button class="general-btn" onclick="window.GeneralMap.openTravelMenu($('#custom-dest-input').val())">下一步</button>
         `);
-        // 确保使用 Flex 显示，因为 style.css 中已修正 z-index
         box.css('display', 'flex');
     },
 
@@ -371,9 +446,8 @@ window.GeneralMap = {
         this.currentDestination = destination;
         const box = $('#travel-menu-overlay');
         
-        // 渲染选择界面
         box.find('.travel-options').html(`
-            <div style="margin-bottom:10px; font-weight:bold; color:#e0c5a1;">目的地：${destination}</div>
+            <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">目的地：${destination}</div>
             <button class="general-btn" onclick="window.GeneralMap.confirmTravel(true)">👤 独自前往</button>
             <button class="general-btn" onclick="window.GeneralMap.showCompanionInput()">👥 邀请某人一起前往</button>
             <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.closeTravelMenu()">返回</button>
@@ -392,24 +466,21 @@ window.GeneralMap = {
 
     confirmTravel: function(isAlone) {
         const destination = this.currentDestination;
-        const userPlaceholder = "{{user}}"; // 酒馆标准占位符
+        const userPlaceholder = "{{user}}"; 
         let outputText = "";
         
         if (isAlone) {
-             // 逻辑分支 1：独自前往
              outputText = `${userPlaceholder} 决定独自前往${destination}。`;
         } else {
-             // 逻辑分支 2：邀请某人
              const companionName = $('#companion-name').val();
              if (!companionName) return alert("请输入姓名");
              outputText = `${userPlaceholder} 邀请 ${companionName} 前往 ${destination}`;
         }
         
-        // 发送指令到酒馆
         if (stContext) {
             stContext.executeSlashCommandsWithOptions(`/setinput ${outputText}`);
-            this.closeAllPopups(); // 关闭所有弹窗
-            $('#general-map-panel').fadeOut(); // 关闭地图面板
+            this.closeAllPopups(); 
+            $('#general-map-panel').fadeOut(); 
         } else {
             console.log("Mock Travel Command:", outputText);
             alert("指令已生成: " + outputText);
@@ -431,7 +502,7 @@ const initInterval = setInterval(() => {
 }, 500);
 
 async function initializeExtension() {
-    console.log("[General Map] Initializing V3...");
+    console.log("[General Map] Initializing V4...");
 
     $('#general-map-panel').remove();
     $('#general-toggle-btn').remove();
