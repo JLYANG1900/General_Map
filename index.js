@@ -20,28 +20,6 @@ const defaultMapData = {
     "office2": { id: "office2", name: "D集团", x: "15%", y: "70%", desc: "国内最大的娱乐产业集团之一。", type: "simple", color: "#e57373" },
     "highschool": { id: "highschool", name: "高中", x: "30%", y: "85%", desc: "本市著名的重点高中。", type: "simple", color: "#ffcc80" },
     "other-places": { id: "other-places", name: "其他地点", x: "85%", y: "85%", desc: "前往未在地图上标注的区域。", type: "custom", color: "#ffe0b2" },
-    
-    // 复杂地点示例：荒坂大楼
-    "dorm": { 
-        id: "ARASAKA", 
-        name: "荒坂大楼", 
-        x: "20%", 
-        y: "30%", 
-        desc: "坐落在西区的荒坂大楼，安保和私密性都是顶级。", 
-        type: "complex", 
-        color: "#81c784",
-        image: "https://files.catbox.moe/j9xmwz.jpg",
-        internalImage: "https://files.catbox.moe/ugbkfg.jpg",
-        // 楼层/区域列表
-        floors: [
-            { name: "1. CEO办公室", content: "荒坂大楼顶层的CEO办公室" },
-            { name: "2. 行政办公区", content: "这里是荒坂核心员工的办公区域。", subItems: ["代号A", "代号B", "代号C", "代号D", "代号E", "代号F", "代号G", "代号H", "代号I", "代号J", "代号K", "代号L"] },
-            { name: "3. 普通办公区", content: "这里是大多数荒坂非核心员工的办公区域。" },
-            { name: "4. 反情报部门", content: "反情报部门出身的公司V曾经的办公区域。" },
-            { name: "5. 一楼大厅", content: "安保极其严格的荒坂大楼入口。" },
-            { name: "6. 神秘地下室", content: "里面到底藏着什么呢？" }
-        ]
-    }
 };
 
 // 全局状态
@@ -467,7 +445,8 @@ window.GeneralMap = {
         } else {
             const name = $('#companion-name').val();
             if (!name) return alert("请输入姓名");
-            text = `{{user}} 邀请 ${name} 一起前往${dest}。`;
+            // 更新逻辑：{{user}} 邀请 {name} 前往 {dest}
+            text = `{{user}} 邀请 ${name} 前往${dest}`;
         }
         
         if (stContext) {
