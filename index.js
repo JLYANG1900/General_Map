@@ -4,7 +4,7 @@ const extensionPath = `scripts/extensions/third-party/${extensionName}`;
 let stContext = null;
 
 // ==========================================
-// 工具 1: 圖片壓縮 (保留之前的優化)
+// 工具 1: 图片压缩 (保留之前的优化)
 // ==========================================
 function compressImage(file, maxWidth = 800, quality = 0.7) {
     return new Promise((resolve, reject) => {
@@ -34,7 +34,7 @@ function compressImage(file, maxWidth = 800, quality = 0.7) {
 }
 
 // ==========================================
-// 工具 2: IndexedDB 簡易封裝 (解決 5MB 限制)
+// 工具 2: IndexedDB 简易封装 (解决 5MB 限制)
 // ==========================================
 const dbName = "GeneralMapDB_V1";
 const storeName = "settings";
@@ -42,7 +42,7 @@ const storeName = "settings";
 const SimpleDB = {
     db: null,
     
-    // 打開數據庫
+    // 打开数据库
     open: function() {
         return new Promise((resolve, reject) => {
             if (this.db) return resolve(this.db);
@@ -64,7 +64,7 @@ const SimpleDB = {
         });
     },
 
-    // 獲取數據 (替代 localStorage.getItem)
+    // 获取数据 (替代 localStorage.getItem)
     getItem: async function(key) {
         await this.open();
         return new Promise((resolve, reject) => {
@@ -76,7 +76,7 @@ const SimpleDB = {
         });
     },
 
-    // 保存數據 (替代 localStorage.setItem)
+    // 保存数据 (替代 localStorage.setItem)
     setItem: async function(key, value) {
         await this.open();
         return new Promise((resolve, reject) => {
@@ -88,7 +88,7 @@ const SimpleDB = {
         });
     },
     
-    // 刪除數據
+    // 删除数据
     removeItem: async function(key) {
         await this.open();
         return new Promise((resolve, reject) => {
@@ -102,7 +102,7 @@ const SimpleDB = {
 };
 
 // ==========================================
-// 默認數據
+// 默认数据
 // ==========================================
 const defaultMapData = {
     "gov": { id: "gov", name: "市政府", x: "50%", y: "60%", desc: "城市行政中心。", type: "simple", color: "#ef9a9a" },
@@ -126,7 +126,7 @@ window.GeneralMap = {
     currentDestination: '',
     themeColor: '#b38b59', 
     
-    // [修改] init 變為 async
+    // [修改] init 变为 async
     init: async function() {
         await this.loadTheme(); 
         await this.loadData();
@@ -135,12 +135,12 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 主題管理 (改為異步)
+    // 主题管理 (改为异步)
     // ==========================================
     loadTheme: async function() {
-        // 嘗試從 DB 讀取
+        // 尝试从 DB 读取
         let savedColor = await SimpleDB.getItem('general_map_theme');
-        // 兼容舊版 localStorage (如果 DB 沒有，嘗試讀舊的並遷移)
+        // 兼容旧版 localStorage (如果 DB 没有，尝试读旧的并迁移)
         if (!savedColor) {
             savedColor = localStorage.getItem('general_map_theme');
         }
@@ -165,20 +165,20 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 數據加載與保存 (核心修改)
+    // 数据加载与保存 (核心修改)
     // ==========================================
     loadData: async function() {
-        // [修改] 從 DB 讀取
+        // [修改] 从 DB 读取
         let rawData = await SimpleDB.getItem('general_map_data_v2');
         
-        // 遷移邏輯：如果 DB 沒數據，試試 LocalStorage
+        // 迁移逻辑：如果 DB 没数据，试试 LocalStorage
         if (!rawData) {
             rawData = localStorage.getItem('general_map_data_v2');
             if (rawData) {
-                // 如果發現舊數據，自動遷移到新 DB
+                // 如果发现旧数据，自动迁移到新 DB
                 try {
                     await SimpleDB.setItem('general_map_data_v2', rawData);
-                    console.log("已將舊數據遷移至 IndexedDB");
+                    console.log("已将旧数据迁移至 IndexedDB");
                 } catch(e) {}
             }
         }
@@ -190,7 +190,7 @@ window.GeneralMap = {
                     if (!this.mapData[key]) this.mapData[key] = defaultMapData[key];
                 }
             } catch (e) {
-                console.error("數據損壞，重置為默認", e);
+                console.error("数据损坏，重置为默认", e);
                 this.mapData = JSON.parse(JSON.stringify(defaultMapData));
             }
         } else {
@@ -201,27 +201,27 @@ window.GeneralMap = {
     saveData: async function() {
         try {
             // [修改] 保存到 DB (支持大文件)
-            // 這裡不需要 JSON.stringify，IndexedDB 可以直接存對象
-            // 但為了保持邏輯兼容，存對象即可，不用 stringify
+            // 这里不需要 JSON.stringify，IndexedDB 可以直接存对象
+            // 但为了保持逻辑兼容，存对象即可，不用 stringify
             await SimpleDB.setItem('general_map_data_v2', this.mapData);
         } catch (e) {
-            console.error("保存失敗", e);
-            alert("保存數據時發生錯誤：" + e.message);
+            console.error("保存失败", e);
+            alert("保存数据时发生错误：" + e.message);
         }
     },
 
     resetData: async function() {
-        if(confirm("確定要重置所有地圖數據嗎？")) {
+        if(confirm("确定要重置所有地图数据吗？")) {
             await SimpleDB.removeItem('general_map_data_v2');
-            localStorage.removeItem('general_map_data_v2'); // 清理舊的
+            localStorage.removeItem('general_map_data_v2'); // 清理旧的
             await this.loadData();
             this.renderMapPins();
-            alert("數據已重置。");
+            alert("数据已重置。");
         }
     },
 
     // ==========================================
-    // 地圖渲染 (保持不變)
+    // 地图渲染 (保持不变)
     // ==========================================
     renderMapPins: function() {
         const container = document.getElementById('general-map-container');
@@ -247,10 +247,10 @@ window.GeneralMap = {
         const id = 'custom-' + Date.now();
         this.mapData[id] = {
             id: id,
-            name: "新地點",
+            name: "新地点",
             x: "50%", 
             y: "50%", 
-            desc: "點擊編輯描述", 
+            desc: "点击编辑描述", 
             type: "simple", 
             color: this.themeColor 
         };
@@ -260,7 +260,7 @@ window.GeneralMap = {
     },
 
     deletePin: function(id) {
-        if (confirm("確定要永久刪除這個地點嗎？")) {
+        if (confirm("确定要永久删除这个地点吗？")) {
             delete this.mapData[id];
             this.saveData();
             this.renderMapPins();
@@ -340,36 +340,36 @@ window.GeneralMap = {
         let html = `
             <div style="display:flex; justify-content:space-between; align-items:start;">
                 <h3 contenteditable="${this.isEditing}" class="editable-text" style="flex:1" onblur="window.GeneralMap.updateField('${id}', 'name', this.innerText)">${data.name}</h3>
-                ${this.isEditing ? `<button class="general-btn small danger" onclick="window.GeneralMap.deletePin('${id}')">🗑️ 刪除</button>` : ''}
+                ${this.isEditing ? `<button class="general-btn small danger" onclick="window.GeneralMap.deletePin('${id}')">🗑️ 删除</button>` : ''}
             </div>
             
-            <p contenteditable="${this.isEditing}" class="editable-text" onblur="window.GeneralMap.updateField('${id}', 'desc', this.innerText)">${data.desc || "暫無描述"}</p>
+            <p contenteditable="${this.isEditing}" class="editable-text" onblur="window.GeneralMap.updateField('${id}', 'desc', this.innerText)">${data.desc || "暂无描述"}</p>
         `;
 
         if (data.image) {
             html += `<img src="${data.image}" class="popup-image">`;
         } else if (this.isEditing) {
-            html += `<div style="border:1px dashed #666; padding:20px; text-align:center; color:#666">暫無封面圖</div>`;
+            html += `<div style="border:1px dashed #666; padding:20px; text-align:center; color:#666">暂无封面图</div>`;
         }
 
         if (this.isEditing) {
             html += `
                 <div class="edit-controls">
-                    <button class="general-btn small" onclick="document.getElementById('img-upload-${id}').click()">📷 更換封面</button>
+                    <button class="general-btn small" onclick="document.getElementById('img-upload-${id}').click()">📷 更换封面</button>
                     <input type="file" id="img-upload-${id}" style="display:none" accept="image/*" onchange="window.GeneralMap.uploadImage('${id}', 'image', this)">
-                    ${data.image ? `<button class="general-btn small danger" onclick="window.GeneralMap.updateField('${id}', 'image', '')">🗑️ 刪除圖</button>` : ''}
+                    ${data.image ? `<button class="general-btn small danger" onclick="window.GeneralMap.updateField('${id}', 'image', '')">🗑️ 删除图</button>` : ''}
                 </div>
             `;
         }
 
         html += `<div style="text-align:center; margin-top:15px; display:flex; gap:10px; justify-content:center;">`;
         if (data.type === 'complex' || (this.isEditing && data.floors)) {
-            html += `<button class="general-btn" onclick="window.GeneralMap.renderInterior('${id}')">🚪 進入內部</button>`;
+            html += `<button class="general-btn" onclick="window.GeneralMap.renderInterior('${id}')">🚪 进入内部</button>`;
         } else if (this.isEditing) {
-            html += `<button class="general-btn small" onclick="window.GeneralMap.addFloor('${id}')">➕ 添加樓層/區域</button>`;
+            html += `<button class="general-btn small" onclick="window.GeneralMap.addFloor('${id}')">➕ 添加楼层/区域</button>`;
         }
         
-        html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${data.name}')">🚀 前往此處</button>`;
+        html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${data.name}')">🚀 前往此处</button>`;
         html += `</div>`;
 
         content.innerHTML = html;
@@ -383,13 +383,13 @@ window.GeneralMap = {
         if (!data.floors) data.floors = [];
 
         let html = `
-            <h3><span onclick="window.GeneralMap.renderPopup('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${data.name} - 內部</h3>
+            <h3><span onclick="window.GeneralMap.renderPopup('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${data.name} - 内部</h3>
             <div class="interior-container">
         `;
         if (data.internalImage) {
             html += `<img src="${data.internalImage}" class="interior-image">`;
         } else {
-            html += `<div style="height:200px; display:flex; align-items:center; justify-content:center; color:#666;">暫無內部示意圖</div>`;
+            html += `<div style="height:200px; display:flex; align-items:center; justify-content:center; color:#666;">暂无内部示意图</div>`;
         }
 
         html += `<div class="floor-nav">`;
@@ -407,10 +407,10 @@ window.GeneralMap = {
         });
         
         if (this.isEditing) {
-            html += `<button class="general-btn small" style="width:100%; margin-top:10px;" onclick="window.GeneralMap.addFloor('${id}')">➕ 新增區域</button>`;
+            html += `<button class="general-btn small" style="width:100%; margin-top:10px;" onclick="window.GeneralMap.addFloor('${id}')">➕ 新增区域</button>`;
             html += `
                 <div style="margin-top:10px; border-top:1px dashed #444; padding-top:5px;">
-                    <button class="general-btn small" onclick="document.getElementById('int-img-${id}').click()">📷 更換內部圖</button>
+                    <button class="general-btn small" onclick="document.getElementById('int-img-${id}').click()">📷 更换内部图</button>
                     <input type="file" id="int-img-${id}" style="display:none" accept="image/*" onchange="window.GeneralMap.uploadImage('${id}', 'internalImage', this)">
                 </div>
             `;
@@ -425,17 +425,17 @@ window.GeneralMap = {
         
         let html = `
             <h3><span onclick="window.GeneralMap.renderInterior('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${floor.name}</h3>
-            <p style="font-size:12px; color:#888;">名稱 (可編輯):</p>
+            <p style="font-size:12px; color:#888;">名称 (可编辑):</p>
             <div contenteditable="${this.isEditing}" class="editable-text" style="font-size:16px; margin-bottom:10px;"
                  onblur="window.GeneralMap.updateFloor('${id}', ${floorIndex}, 'name', this.innerText)">${floor.name}</div>
             
-            <p style="font-size:12px; color:#888;">描述 (可編輯):</p>
+            <p style="font-size:12px; color:#888;">描述 (可编辑):</p>
             <div contenteditable="${this.isEditing}" class="editable-text" style="min-height:50px; margin-bottom:15px;"
-                 onblur="window.GeneralMap.updateFloor('${id}', ${floorIndex}, 'content', this.innerText)">${floor.content || "點擊添加描述..."}</div>
+                 onblur="window.GeneralMap.updateFloor('${id}', ${floorIndex}, 'content', this.innerText)">${floor.content || "点击添加描述..."}</div>
         `;
         
         if (floor.subItems && floor.subItems.length > 0) {
-            html += `<h4>包含區域:</h4><div style="display:flex; flex-wrap:wrap; gap:5px;">`;
+            html += `<h4>包含区域:</h4><div style="display:flex; flex-wrap:wrap; gap:5px;">`;
             floor.subItems.forEach(item => {
                 html += `<button class="general-btn small">${item}</button>`;
             });
@@ -443,7 +443,7 @@ window.GeneralMap = {
         }
         
         html += `<div style="text-align:center; margin-top:20px;">
-                    <button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${floor.name}')">🚀 前往此處</button>
+                    <button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${floor.name}')">🚀 前往此处</button>
                  </div>`;
 
         content.innerHTML = html;
@@ -458,11 +458,11 @@ window.GeneralMap = {
         const label = document.getElementById('edit-mode-label');
         if (this.isEditing) {
             body.classList.add('general-editing-active');
-            label.innerText = "✏️ 編輯中...";
+            label.innerText = "✏️ 编辑中...";
             label.style.color = this.themeColor;
         } else {
             body.classList.remove('general-editing-active');
-            label.innerText = "✏️ 編輯模式";
+            label.innerText = "✏️ 编辑模式";
             label.style.color = "#888";
         }
     },
@@ -482,21 +482,21 @@ window.GeneralMap = {
 
     addFloor: function(id) {
         if (!this.mapData[id].floors) this.mapData[id].floors = [];
-        this.mapData[id].floors.push({ name: "新區域 " + (this.mapData[id].floors.length + 1), content: "描述..." });
+        this.mapData[id].floors.push({ name: "新区域 " + (this.mapData[id].floors.length + 1), content: "描述..." });
         this.mapData[id].type = 'complex'; 
         this.saveData();
         this.renderInterior(id); 
     },
 
     deleteFloor: function(id, index) {
-        if(confirm("確定刪除嗎？")) {
+        if(confirm("确定删除吗？")) {
             this.mapData[id].floors.splice(index, 1);
             this.saveData();
             this.renderInterior(id);
         }
     },
 
-    // [修改] 結合壓縮 + DB 存儲
+    // [修改] 结合压缩 + DB 存储
     uploadImage: function(id, field, input) {
         if (input.files && input.files[0]) {
             const file = input.files[0];
@@ -506,13 +506,13 @@ window.GeneralMap = {
                 if (field === 'image') this.renderPopup(id);
                 if (field === 'internalImage') this.renderInterior(id);
             }).catch(err => {
-                console.error("圖片處理失敗", err);
-                alert("圖片處理失敗，請重試");
+                console.error("图片处理失败", err);
+                alert("图片处理失败，请重试");
             });
         }
     },
     
-    // [修改] 背景圖存儲到 DB
+    // [修改] 背景图存储到 DB
     changeBackground: function(input) {
         if (input.files && input.files[0]) {
             compressImage(input.files[0], 1024, 0.7).then(async (bgData) => {
@@ -520,21 +520,21 @@ window.GeneralMap = {
                 try {
                     await SimpleDB.setItem('general_map_bg_v2', bgData);
                 } catch (e) {
-                     alert("背景圖保存失敗：" + e.message);
+                     alert("背景图保存失败：" + e.message);
                 }
             });
         }
     },
 
-    // [修改] 從 DB 加載背景
+    // [修改] 从 DB 加载背景
     loadBackground: async function() {
         let bg = await SimpleDB.getItem('general_map_bg_v2');
-        if (!bg) bg = localStorage.getItem('general_map_bg_v2'); // 兼容舊版
+        if (!bg) bg = localStorage.getItem('general_map_bg_v2'); // 兼容旧版
         if (bg) document.getElementById('general-map-container').style.backgroundImage = `url(${bg})`;
     },
 
     // ==========================================
-    // 出行邏輯
+    // 出行逻辑
     // ==========================================
     closeAllPopups: function() {
         $('#general-overlay').hide();
@@ -549,22 +549,22 @@ window.GeneralMap = {
     showCustomTravelPopup: function() {
         const box = $('#travel-menu-overlay');
         box.find('.travel-options').html(`
-            <p>請輸入目的地名稱：</p>
-            <input type="text" id="custom-dest-input" class="travel-input" placeholder="例如：海邊">
+            <p>请输入目的地名称：</p>
+            <input type="text" id="custom-dest-input" class="travel-input" placeholder="例如：海边">
             <button class="general-btn" onclick="window.GeneralMap.openTravelMenu($('#custom-dest-input').val())">下一步</button>
         `);
         box.css('display', 'flex');
     },
 
     openTravelMenu: function(destination) {
-        if(!destination) return alert("請輸入目的地");
+        if(!destination) return alert("请输入目的地");
         this.currentDestination = destination;
         const box = $('#travel-menu-overlay');
         
         box.find('.travel-options').html(`
             <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">目的地：${destination}</div>
-            <button class="general-btn" onclick="window.GeneralMap.confirmTravel(true)">👤 獨自前往</button>
-            <button class="general-btn" onclick="window.GeneralMap.showCompanionInput()">👥 邀請某人一起前往</button>
+            <button class="general-btn" onclick="window.GeneralMap.confirmTravel(true)">👤 独自前往</button>
+            <button class="general-btn" onclick="window.GeneralMap.showCompanionInput()">👥 邀请某人一起前往</button>
             <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.closeTravelMenu()">返回</button>
         `);
         box.css('display', 'flex');
@@ -572,8 +572,8 @@ window.GeneralMap = {
 
     showCompanionInput: function() {
         $('#travel-menu-overlay .travel-options').html(`
-            <p style="color: #888; margin: 0 0 10px 0;">和誰一起去？</p>
-            <input type="text" id="companion-name" class="travel-input" placeholder="輸入角色姓名">
+            <p style="color: #888; margin: 0 0 10px 0;">和谁一起去？</p>
+            <input type="text" id="companion-name" class="travel-input" placeholder="输入角色姓名">
             <button class="general-btn" onclick="window.GeneralMap.confirmTravel(false)">🚀 前往</button>
             <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu('${this.currentDestination}')">返回</button>
         `);
@@ -585,11 +585,11 @@ window.GeneralMap = {
         let outputText = "";
         
         if (isAlone) {
-             outputText = `${userPlaceholder} 決定獨自前往${destination}。`;
+             outputText = `${userPlaceholder} 决定独自前往${destination}。`;
         } else {
              const companionName = $('#companion-name').val();
-             if (!companionName) return alert("請輸入姓名");
-             outputText = `${userPlaceholder} 邀請 ${companionName} 前往 ${destination}`;
+             if (!companionName) return alert("请输入姓名");
+             outputText = `${userPlaceholder} 邀请 ${companionName} 前往 ${destination}`;
         }
         
         if (stContext) {
@@ -629,13 +629,13 @@ async function initializeExtension() {
     document.head.appendChild(link);
 
     const panelHTML = `
-        <div id="general-toggle-btn" title="打開 General 地圖" 
+        <div id="general-toggle-btn" title="打开 General 地图" 
              style="position:fixed; top:130px; left:10px; z-index:9000; width:40px; height:40px; background:#b38b59; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.3); color:#fff; font-size:20px;">
             🗺️
         </div>
         <div id="general-map-panel">
             <div id="general-drag-handle">
-                <span>General 檔案地圖</span>
+                <span>General 档案地图</span>
                 <span id="general-close-btn">❌</span>
             </div>
             <div id="general-content-area">Loading...</div>
@@ -648,12 +648,12 @@ async function initializeExtension() {
         if (!response.ok) throw new Error("Map file not found");
         const htmlContent = await response.text();
         $('#general-content-area').html(htmlContent);
-        // 初始化現在是異步的
+        // 初始化现在是异步的
         await window.GeneralMap.init();
 
     } catch (e) {
         console.error("[General Map] Error:", e);
-        $('#general-content-area').html(`<p style="padding:20px; color:white;">加載失敗: ${e.message}</p>`);
+        $('#general-content-area').html(`<p style="padding:20px; color:white;">加载失败: ${e.message}</p>`);
     }
 
     $('#general-toggle-btn').on('click', () => {
