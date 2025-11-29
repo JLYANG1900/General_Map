@@ -1,8 +1,8 @@
 {
     "display_name": "General_Map",
     "author": "JLYANG1900",
-    "version": "1.0.0",
-    "description": "酒馆通用地图 - 包含自定义地点信息与交互式旅行功能。",
+    "version": "1.1.0",
+    "description": "酒馆通用地图 - 包含自定义地点信息与交互式旅行功能。新增了活动选择弹窗、遇见NPC选项、可拖拽悬浮图标。",
     "js": "index.js",
     "css": "style.css",
     "html": "map.html"
