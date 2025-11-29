@@ -806,7 +806,7 @@ window.GeneralMap = {
 
         // 构建第二部分：遇见NPC
         if (meetNPC && meetNPCName) {
-            outputText += `，并打算在那里见 ${meetNPCName}`;
+            outputText += `，并在那里遇见 ${meetNPCName}`;
         }
 
         // 构建第三部分：活动
@@ -928,3 +928,4 @@ async function initializeExtension() {
         });
     }
 }
+
