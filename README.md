@@ -16,8 +16,8 @@ Deep Scene Construction: Create multi-level interior views for any location (e.g
 :art:个性化 UI：内置主题色引擎，您可以实时调整界面主色调以匹配不同的地图氛围。
 Personalized UI: Built-in theme color engine lets you dynamically adjust interface hues to match your map's atmosphere.
 
-:rocket:沉浸式快速回复交互：集成了智能出行系统。点击目的地后，可选择“独自前往”或“邀请角色同行”，插件会自动生成符合剧情的指令并发送至对话框，一键引导AI生成后续故事剧情。
-Immersive Quick Reply Interaction: Integrated with an intelligent travel system. After clicking a destination, choose “Go Alone” or “Invite Character to Accompany.” The plugin automatically generates contextually appropriate commands and sends them to the dialogue box, guiding the AI to generate subsequent storylines with a single click.
+:rocket:沉浸式快速回复交互：集成了智能出行系统。点击目的地后，可选择“独自前往”或“邀请角色同行”，插件会自动生成符合剧情的指令，“{{user}} 邀请 某人 前往 某地，并在那里遇见 某人。活动内容：做了什么事”，并发送至对话框，一键引导AI生成后续故事剧情。
+Immersive Quick Reply Interaction: Integrated with an intelligent travel system. After clicking a destination, choose “Go Alone” or “Invite Character to Accompany.” The plugin automatically generates contextually appropriate commands, such as "{{user}} invited someone to a certain place and met someone there. Activity details: What to do.", and sends them to the dialogue box, guiding the AI to generate subsequent storylines with a single click.
 
 :computer: 重启酒馆后，插件依然记得你所有的自定义编辑，除非你手动点击重置数据。
 After restarting Silly Tavern, the plugin remembers all your custom edits unless you manually click to reset data.
