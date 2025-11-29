@@ -242,12 +242,9 @@ body.general-editing-active .editable-text { border-color: #666; background: rgb
 body.general-editing-active .editable-text:hover { border-color: var(--theme-color); } /* Updated */
 body.general-editing-active .editable-text:focus { outline: none; border-color: var(--theme-color); background: #000; } /* Updated */
 
-/* [Updated] 封面图样式更新：移除最大高度限制，允许自由尺寸 */
 .popup-image { 
     width: 100%; 
     height: auto; 
-    /* max-height: 200px; REMOVED */
-    /* object-fit: cover; REMOVED */
     margin: 10px 0; 
     border: 1px solid #444; 
     display: block; 
@@ -300,7 +297,7 @@ body.general-editing-active .edit-controls { display: flex; }
     border: 1px solid var(--theme-color); /* Updated */
     padding: 20px; 
     width: 85%; 
-    max-width: 300px; 
+    max-width: 320px; 
     text-align: center; 
     box-shadow: 0 0 30px rgba(0,0,0,0.9);
 }
@@ -315,6 +312,14 @@ body.general-editing-active .edit-controls { display: flex; }
     text-align: center; 
 }
 
+/* [新增] 活动选择网格布局 */
+.activity-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
 /* 移动端适配 */
 @media screen and (max-width: 768px) {
     #general-map-panel {
@@ -325,4 +330,3 @@ body.general-editing-active .edit-controls { display: flex; }
     .general-popup { width: 95%; max-height: 85vh; padding: 15px; }
     .controls-bar { flex-direction: column; align-items: stretch; }
 }
-
