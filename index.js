@@ -135,7 +135,15 @@ window.GeneralMap = {
     mapData: {},         
     isEditing: false,    
     currentDestination: '',
-    themeColor: '#b38b59', 
+    themeColor: '#b38b59',
+    // 临时存储出行信息
+    tempTravelData: {
+        isAlone: true,
+        companionName: '',
+        meetNPC: false,
+        meetNPCName: '',
+        destination: ''
+    },
     
     init: async function() {
         await this.loadTheme(); 
@@ -221,7 +229,7 @@ window.GeneralMap = {
         }
     },
 
-    // [新增] 导出备份
+    // 导出备份
     exportBackup: async function() {
         try {
             const dataStr = JSON.stringify(this.mapData, null, 2);
@@ -241,7 +249,7 @@ window.GeneralMap = {
         }
     },
 
-    // [新增] 导入备份
+    // 导入备份
     importBackup: function(input) {
         if (input.files && input.files[0]) {
             const reader = new FileReader();
@@ -365,7 +373,7 @@ window.GeneralMap = {
             elm.classList.remove('dragging');
         };
 
-        // --- 触摸事件 (移动端) [新增] ---
+        // --- 触摸事件 (移动端) ---
         const touchStartHandler = (e) => {
             if (this.isEditing) {
                 isDragging = true;
@@ -653,7 +661,7 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 出行逻辑
+    // 出行逻辑 (V6 Update: NPC & Activity)
     // ==========================================
     closeAllPopups: function() {
         $('#general-overlay').hide();
@@ -675,13 +683,27 @@ window.GeneralMap = {
         box.css('display', 'flex');
     },
 
+    // 1. 打开目的地界面
     openTravelMenu: function(destination) {
         if(!destination) return alert("请输入目的地");
-        this.currentDestination = destination;
+        this.tempTravelData.destination = destination;
+        
         const box = $('#travel-menu-overlay');
         
+        // [新增] 遇见 NPC 选项
         box.find('.travel-options').html(`
             <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">目的地：${Sanitize.encode(destination)}</div>
+            
+            <div style="margin-bottom:15px; text-align:left; background:rgba(0,0,0,0.3); padding:10px; border-radius:4px;">
+                <label style="display:flex; align-items:center; cursor:pointer;">
+                    <input type="checkbox" id="meet-npc-toggle" onchange="window.GeneralMap.toggleNpcInput()">
+                    <span style="margin-left:8px; color:#dcdcdc;">是否要遇见 NPC?</span>
+                </label>
+                <div id="npc-input-container" style="display:none; margin-top:8px;">
+                    <input type="text" id="meet-npc-name" class="travel-input" style="margin:0; width:100%; box-sizing:border-box;" placeholder="输入 NPC 名字">
+                </div>
+            </div>
+
             <button class="general-btn" onclick="window.GeneralMap.confirmTravel(true)">👤 独自前往</button>
             <button class="general-btn" onclick="window.GeneralMap.showCompanionInput()">👥 邀请某人一起前往</button>
             <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.closeTravelMenu()">返回</button>
@@ -689,28 +711,108 @@ window.GeneralMap = {
         box.css('display', 'flex');
     },
 
+    toggleNpcInput: function() {
+        const isChecked = document.getElementById('meet-npc-toggle').checked;
+        const container = document.getElementById('npc-input-container');
+        container.style.display = isChecked ? 'block' : 'none';
+        if(isChecked) {
+            document.getElementById('meet-npc-name').focus();
+        }
+    },
+
     showCompanionInput: function() {
+        // 在进入同伴输入前，先保存一下 NPC 状态（如果有的话），或者直接在 confirmTravel 里统一获取
+        // 这里为了简化流程，我们假设用户已经填好了 NPC 状态，点击“邀请某人”是中间步骤
+        
+        // 保存当前 NPC 设置到 temp
+        const npcToggle = document.getElementById('meet-npc-toggle');
+        if(npcToggle) {
+             this.tempTravelData.meetNPC = npcToggle.checked;
+             this.tempTravelData.meetNPCName = $('#meet-npc-name').val() || '';
+        }
+
         $('#travel-menu-overlay .travel-options').html(`
             <p style="color: #888; margin: 0 0 10px 0;">和谁一起去？</p>
             <input type="text" id="companion-name" class="travel-input" placeholder="输入角色姓名">
-            <button class="general-btn" onclick="window.GeneralMap.confirmTravel(false)">🚀 前往</button>
-            <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(this.currentDestination)}')">返回</button>
+            <button class="general-btn" onclick="window.GeneralMap.confirmTravel(false)">下一步</button>
+            <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(this.tempTravelData.destination)}')">返回</button>
         `);
     },
 
+    // 2. 确认出行方式（独自/陪伴），进入活动选择
     confirmTravel: function(isAlone) {
-        const destination = this.currentDestination;
-        const userPlaceholder = "{{user}}"; 
-        let outputText = "";
-        
+        // 如果是从主菜单直接点击“独自前往”，需要获取 NPC 数据
         if (isAlone) {
-             outputText = `${userPlaceholder} 决定独自前往${destination}。`;
+             const npcToggle = document.getElementById('meet-npc-toggle');
+             if(npcToggle) {
+                 this.tempTravelData.meetNPC = npcToggle.checked;
+                 this.tempTravelData.meetNPCName = $('#meet-npc-name').val() || '';
+             }
         } else {
+             // 如果是同伴模式，名字在 companion-input 里
              const companionName = $('#companion-name').val();
              if (!companionName) return alert("请输入姓名");
-             outputText = `${userPlaceholder} 邀请 ${companionName} 前往 ${destination}`;
+             this.tempTravelData.companionName = companionName;
         }
+
+        this.tempTravelData.isAlone = isAlone;
+        this.showActivitySelection();
+    },
+
+    // 3. [新增] 活动选择弹窗
+    showActivitySelection: function() {
+        const activities = ['闲逛', '吃饭', '喝酒', '约会', '睡觉', '做爱'];
+        const box = $('#travel-menu-overlay');
         
+        let html = `
+            <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">在目的地做什么？</div>
+            <div class="activity-grid">
+        `;
+        
+        activities.forEach(act => {
+            html += `<button class="general-btn" onclick="window.GeneralMap.finalizeTravel('${act}')">${act}</button>`;
+        });
+        
+        html += `
+            </div>
+            <div style="margin-top:15px; border-top:1px solid #444; padding-top:10px; text-align:left;">
+                <p style="margin:0 0 5px 0; font-size:12px; color:#888;">自定义活动：</p>
+                <div style="display:flex; gap:5px;">
+                    <input type="text" id="custom-activity" class="travel-input" style="margin:0; flex:1;" placeholder="例如：看电影">
+                    <button class="general-btn" onclick="window.GeneralMap.finalizeTravel($('#custom-activity').val())">确定</button>
+                </div>
+            </div>
+            <button class="general-btn" style="margin-top: 15px; width:100%; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(this.tempTravelData.destination)}')">重选目的地</button>
+        `;
+        
+        box.find('.travel-options').html(html);
+    },
+
+    // 4. 生成最终文本并执行
+    finalizeTravel: function(activity) {
+        if (!activity) return alert("请选择或输入活动内容");
+
+        const { destination, isAlone, companionName, meetNPC, meetNPCName } = this.tempTravelData;
+        const userPlaceholder = "{{user}}";
+        
+        let outputText = "";
+        
+        // 构建第一部分：去哪里
+        if (isAlone) {
+            outputText += `${userPlaceholder} 决定独自前往 ${destination}`;
+        } else {
+            outputText += `${userPlaceholder} 邀请 ${companionName} 前往 ${destination}`;
+        }
+
+        // 构建第二部分：遇见NPC
+        if (meetNPC && meetNPCName) {
+            outputText += `，并打算在那里见 ${meetNPCName}`;
+        }
+
+        // 构建第三部分：活动
+        // 简单自然语言拼接
+        outputText += `。活动内容：${activity}。`;
+
         if (stContext) {
             stContext.executeSlashCommandsWithOptions(`/setinput ${outputText}`);
             this.closeAllPopups(); 
@@ -736,7 +838,7 @@ const initInterval = setInterval(() => {
 }, 500);
 
 async function initializeExtension() {
-    console.log("[General Map] Initializing V6 (Mobile Drag)...");
+    console.log("[General Map] Initializing V7 (Features Added)...");
 
     $('#general-map-panel').remove();
     $('#general-toggle-btn').remove();
@@ -747,9 +849,21 @@ async function initializeExtension() {
     link.href = `${extensionPath}/style.css`;
     document.head.appendChild(link);
 
+    // [新增] 悬挂小图标逻辑 - 移动端默认居中
+    let defaultTop = '130px';
+    let defaultLeft = '10px';
+    let transformStyle = '';
+    
+    // 简单判断是否移动端 (屏幕宽度小于 768px)
+    if (window.innerWidth <= 768) {
+        defaultTop = '50%';
+        defaultLeft = '50%';
+        transformStyle = 'translate(-50%, -50%)';
+    }
+
     const panelHTML = `
         <div id="general-toggle-btn" title="打开 General 地图" 
-             style="position:fixed; top:130px; left:10px; z-index:9000; width:40px; height:40px; background:#b38b59; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.3); color:#fff; font-size:20px;">
+             style="position:fixed; top:${defaultTop}; left:${defaultLeft}; transform:${transformStyle}; z-index:9000; width:45px; height:45px; background:#b38b59; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); color:#fff; font-size:22px;">
             🗺️
         </div>
         <div id="general-map-panel">
@@ -774,7 +888,29 @@ async function initializeExtension() {
         $('#general-content-area').html(`<p style="padding:20px; color:white;">加载失败: ${e.message}</p>`);
     }
 
-    $('#general-toggle-btn').on('click', () => {
+    // [新增] 悬挂图标拖拽逻辑
+    const toggleBtn = $('#general-toggle-btn');
+    let isDraggingIcon = false;
+
+    if ($.fn.draggable) {
+        toggleBtn.draggable({
+            containment: "window",
+            scroll: false,
+            start: function() {
+                isDraggingIcon = true;
+            },
+            stop: function() {
+                // 延迟重置状态，防止拖拽结束时立即触发 click
+                setTimeout(() => {
+                    isDraggingIcon = false;
+                }, 100);
+            }
+        });
+    }
+
+    toggleBtn.on('click', () => {
+        if (isDraggingIcon) return; // 如果是拖拽结束，不触发点击
+        
         const panel = $('#general-map-panel');
         if (panel.is(':visible')) {
             panel.fadeOut();
