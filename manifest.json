@@ -1,5 +1,5 @@
 {
-    "display_name": "General_Map更新前请导出地图数据备份",
+    "display_name": "General_Map",
     "author": "JLYANG1900",
     "version": "1.2.0",
     "description": "酒馆通用地图 - 包含自定义地点信息与交互式旅行功能。新增了多层级城市和国家地图",
@@ -7,3 +7,4 @@
     "css": "style.css",
     "html": "map.html"
 }
+
