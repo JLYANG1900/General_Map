@@ -115,7 +115,19 @@ const SimpleDB = {
 // ==========================================
 // 默认数据
 // ==========================================
-const defaultMapData = {
+const defaultPins = {
+    // === Task 1: 新增的大地图入口 ===
+    "world-map-portal": { 
+        id: "world-map-portal", 
+        name: "大地图", 
+        x: "90%", 
+        y: "10%", 
+        desc: "点击进入世界地图视图。", 
+        type: "portal", 
+        targetMapId: "default_world", 
+        color: "#ffd54f" 
+    },
+    // =============================
     "gov": { id: "gov", name: "市政府", x: "50%", y: "60%", desc: "城市行政中心。", type: "simple", color: "#ef9a9a" },
     "villa": { id: "villa", name: "私人别墅", x: "25%", y: "15%", desc: "位于北区的一栋独栋别墅。", type: "simple", color: "#ba68c8" },
     "PrivateClub": { id: "PrivateClub", name: "私人会所", x: "75%", y: "15%", desc: "仅限会员进入的高级会所，隐秘性极高。", type: "simple", color: "#ce93d8" },
@@ -130,12 +142,44 @@ const defaultMapData = {
     "other-places": { id: "other-places", name: "其他地点", x: "85%", y: "85%", desc: "前往未在地图上标注的区域。", type: "custom", color: "#ffe0b2" },
 };
 
+// 默认 World 结构 (V3)
+const defaultWorldData = {
+    currentMapId: "default_city",
+    maps: {
+        "default_city": {
+            name: "默认城市",
+            // 默认城市背景
+            background: "https://files.catbox.moe/1f95nr.jpg", 
+            pins: JSON.parse(JSON.stringify(defaultPins))
+        },
+        // === Task 1 & 2: 默认世界地图结构 ===
+        "default_world": {
+            name: "世界地图",
+            // 【Updated】新增世界地图默认背景
+            background: "https://files.catbox.moe/iov3on.jpg", 
+            pins: {
+                "city-return-portal": {
+                    id: "city-return-portal",
+                    name: "default_city",
+                    x: "50%",
+                    y: "50%",
+                    desc: "返回默认城市",
+                    type: "portal",
+                    targetMapId: "default_city",
+                    color: "#4fc3f7"
+                }
+            }
+        }
+    }
+};
+
 // 全局状态
 window.GeneralMap = {
-    mapData: {},         
+    worldData: null,     // V3 新增: 存储整个世界的所有地图
+    mapHistory: [],      // V3 新增: 历史堆栈，用于"返回上一层"
     isEditing: false,    
-    currentDestination: '',
     themeColor: '#b38b59',
+    
     // 临时存储出行信息
     tempTravelData: {
         isAlone: true,
@@ -145,11 +189,21 @@ window.GeneralMap = {
         destination: ''
     },
     
+    // Getter: 兼容旧代码，获取当前地图的 pins
+    get mapData() {
+        if (!this.worldData || !this.worldData.maps[this.worldData.currentMapId]) {
+            return {};
+        }
+        return this.worldData.maps[this.worldData.currentMapId].pins;
+    },
+
     init: async function() {
         await this.loadTheme(); 
         await this.loadData();
+        // 渲染逻辑移到 loadBackground 内部或之后
+        await this.loadBackground(); 
         this.renderMapPins();
-        await this.loadBackground();
+        this.updateUIControls();
     },
 
     // ==========================================
@@ -180,9 +234,10 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 数据加载、保存与备份
+    // 数据加载、迁移与保存 (V3 Update)
     // ==========================================
     loadData: async function() {
+        // 1. 尝试读取数据
         let rawData = await SimpleDB.getItem('general_map_data_v2');
         
         if (!rawData) {
@@ -195,24 +250,53 @@ window.GeneralMap = {
             }
         }
 
+        let parsedData = null;
         if (rawData) {
             try {
-                this.mapData = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
-                for (let key in defaultMapData) {
-                    if (!this.mapData[key]) this.mapData[key] = defaultMapData[key];
-                }
+                parsedData = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
             } catch (e) {
                 console.error("数据损坏，重置为默认", e);
-                this.mapData = JSON.parse(JSON.stringify(defaultMapData));
             }
+        }
+
+        // 2. 数据迁移逻辑 (Check if V3)
+        // V3 结构必须包含 'maps' 和 'currentMapId'
+        if (parsedData && parsedData.maps && parsedData.currentMapId) {
+            this.worldData = parsedData;
         } else {
-            this.mapData = JSON.parse(JSON.stringify(defaultMapData));
+            // 这是旧版 V2 数据 (纯 pins 对象)
+            console.log("检测到旧版 V2 数据，正在迁移至 V3 多层级结构...");
+            
+            // 获取旧的全局背景图
+            let oldBg = await SimpleDB.getItem('general_map_bg_v2');
+            if (!oldBg) oldBg = localStorage.getItem('general_map_bg_v2');
+
+            // 构造新的 World 对象
+            this.worldData = JSON.parse(JSON.stringify(defaultWorldData));
+            
+            // 如果有旧 pins 数据，覆盖默认 city
+            if (parsedData && Object.keys(parsedData).length > 0) {
+                this.worldData.maps["default_city"].pins = parsedData;
+            }
+            
+            // 如果有旧背景，存入默认 city
+            if (oldBg) {
+                this.worldData.maps["default_city"].background = oldBg;
+            }
+
+            // 保存迁移后的数据
+            await this.saveData();
+        }
+
+        // 确保当前 ID 有效
+        if (!this.worldData.maps[this.worldData.currentMapId]) {
+            this.worldData.currentMapId = Object.keys(this.worldData.maps)[0] || "default_city";
         }
     },
 
     saveData: async function() {
         try {
-            await SimpleDB.setItem('general_map_data_v2', this.mapData);
+            await SimpleDB.setItem('general_map_data_v2', this.worldData);
         } catch (e) {
             console.error("保存失败", e);
             alert("保存数据时发生错误：" + e.message);
@@ -220,26 +304,102 @@ window.GeneralMap = {
     },
 
     resetData: async function() {
-        if(confirm("确定要重置所有地图数据吗？")) {
+        if(confirm("确定要重置所有地图数据（包括所有层级）吗？")) {
             await SimpleDB.removeItem('general_map_data_v2');
+            // 也清除旧背景 key，防止混淆
+            await SimpleDB.removeItem('general_map_bg_v2');
             localStorage.removeItem('general_map_data_v2'); 
-            await this.loadData();
+            
+            this.mapHistory = [];
+            // 重置时直接使用 defaultWorldData，其中已包含你要求的新增地点
+            this.worldData = JSON.parse(JSON.stringify(defaultWorldData));
+            await this.saveData();
+            
+            await this.loadBackground();
             this.renderMapPins();
+            this.updateUIControls();
             alert("数据已重置。");
         }
     },
 
-    // 导出备份
+    // ==========================================
+    // 地图切换逻辑 (V3 New)
+    // ==========================================
+    
+    // 切换到指定 ID 的地图
+    switchMap: async function(mapId) {
+        if (!mapId) return;
+
+        // 如果目标地图不存在，自动创建一个空白地图
+        if (!this.worldData.maps[mapId]) {
+            console.log(`Map ID ${mapId} 不存在，正在创建新地图...`);
+            this.worldData.maps[mapId] = {
+                name: mapId,
+                background: "",
+                pins: {}
+            };
+        }
+
+        // 记录历史
+        this.mapHistory.push(this.worldData.currentMapId);
+        
+        // 切换
+        this.worldData.currentMapId = mapId;
+        await this.saveData();
+
+        // 刷新视图
+        await this.loadBackground(); // 背景现在随地图变
+        this.renderMapPins();
+        this.updateUIControls();
+    },
+
+    // 返回上一级
+    goBackMap: async function() {
+        if (this.mapHistory.length === 0) return;
+
+        const prevMapId = this.mapHistory.pop();
+        
+        if (this.worldData.maps[prevMapId]) {
+            this.worldData.currentMapId = prevMapId;
+            await this.saveData();
+            
+            await this.loadBackground();
+            this.renderMapPins();
+            this.updateUIControls();
+        } else {
+            alert("历史记录中的地图已不存在。");
+            this.mapHistory = []; // 清空无效历史
+            this.updateUIControls();
+        }
+    },
+
+    updateUIControls: function() {
+        const backBtn = document.getElementById('map-back-btn');
+        if (backBtn) {
+            backBtn.style.display = (this.mapHistory.length > 0) ? 'inline-block' : 'none';
+        }
+        
+        // 更新当前地图标题（可选）
+        const currentMap = this.worldData.maps[this.worldData.currentMapId];
+        const subText = document.getElementById('subtitle-text');
+        if(subText) {
+            subText.innerText = `当前区域: ${currentMap.name || '未知'} (ID: ${this.worldData.currentMapId})`;
+        }
+    },
+
+    // ==========================================
+    // 导入/导出
+    // ==========================================
     exportBackup: async function() {
         try {
-            const dataStr = JSON.stringify(this.mapData, null, 2);
+            const dataStr = JSON.stringify(this.worldData, null, 2);
             const blob = new Blob([dataStr], {type: "application/json"});
             const url = URL.createObjectURL(blob);
             
             const a = document.createElement('a');
             a.href = url;
             const date = new Date().toISOString().slice(0,10);
-            a.download = `General_Map_Backup_${date}.json`;
+            a.download = `General_World_Backup_${date}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -249,27 +409,57 @@ window.GeneralMap = {
         }
     },
 
-    // 导入备份
+// 导入备份 (修复版：兼容旧版 V1/V2 数据)
     importBackup: function(input) {
         if (input.files && input.files[0]) {
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
                     const json = JSON.parse(e.target.result);
-                    if (typeof json !== 'object' || Object.keys(json).length === 0) {
-                        throw new Error("无效的地图数据格式");
+                    
+                    // 1. 定义临时变量存储处理后的数据
+                    let newWorldData = null;
+
+                    // 2. 判断数据格式
+                    if (json.maps && json.currentMapId) {
+                        // === 情况 A: 这是新版 V3 格式 ===
+                        console.log("识别到 V3 格式备份");
+                        newWorldData = json;
+                    } else if (Object.values(json).some(item => item.x && item.y)) {
+                        // === 情况 B: 这是旧版 V1/V2 格式 (纯 Pins 集合) ===
+                        console.log("识别到 V1/V2 旧版格式，正在自动迁移...");
+                        
+                        // 复制一份默认的世界结构
+                        newWorldData = JSON.parse(JSON.stringify(defaultWorldData));
+                        
+                        // 将旧版的所有 Pin 数据塞入 "default_city" 地图中
+                        // 注意：旧版备份通常不包含背景图，这里会使用 default_city 的默认背景
+                        newWorldData.maps["default_city"].pins = json;
+                    } else {
+                        // === 情况 C: 未知格式 ===
+                        throw new Error("无效的地图数据格式 (未找到 maps 结构，也不像旧版地标数据)");
                     }
 
+                    // 3. 执行导入
                     if (confirm("导入备份将覆盖当前的地图数据，确定继续吗？")) {
-                        this.mapData = json;
+                        this.worldData = newWorldData;
+                        this.mapHistory = []; // 清空历史
+                        
+                        // 确保 currentMapId 有效
+                        if (!this.worldData.maps[this.worldData.currentMapId]) {
+                            this.worldData.currentMapId = Object.keys(this.worldData.maps)[0];
+                        }
+
                         await this.saveData(); 
+                        await this.loadBackground();
                         this.renderMapPins();
                         this.closeAllPopups();
-                        alert("备份导入成功！");
+                        this.updateUIControls();
+                        alert("备份导入成功！(已自动兼容旧版数据)");
                     }
                 } catch (err) {
                     console.error(err);
-                    alert("导入失败：文件格式错误或已损坏。");
+                    alert("导入失败：" + err.message);
                 }
                 input.value = '';
             };
@@ -278,20 +468,28 @@ window.GeneralMap = {
     },
 
     // ==========================================
-    // 地图渲染与交互 (包含移动端拖拽支持)
+    // 地图渲染与交互
     // ==========================================
     renderMapPins: function() {
         const container = document.getElementById('general-map-container');
         container.querySelectorAll('.location').forEach(el => el.remove());
 
-        Object.values(this.mapData).forEach(loc => {
+        // 使用 getter 获取当前地图的 pins
+        const currentPins = this.mapData; 
+
+        Object.values(currentPins).forEach(loc => {
             const div = document.createElement('div');
             div.className = 'location';
             div.id = `pin-${loc.id}`;
             div.style.left = loc.x;
             div.style.top = loc.y;
             if (loc.color) div.style.color = loc.color;
-            div.innerHTML = `<span class="label">${Sanitize.encode(loc.name)}</span>`;
+            
+            // 如果是传送门，加个特殊标识
+            let icon = '';
+            if (loc.type === 'portal') icon = '🌀 ';
+            
+            div.innerHTML = `<span class="label">${icon}${Sanitize.encode(loc.name)}</span>`;
             this.bindPinEvents(div, loc.id);
             container.appendChild(div);
         });
@@ -302,7 +500,8 @@ window.GeneralMap = {
             document.getElementById('edit-mode-toggle').click();
         }
         const id = 'custom-' + Date.now();
-        this.mapData[id] = {
+        // 直接写入当前地图的 pins
+        this.worldData.maps[this.worldData.currentMapId].pins[id] = {
             id: id,
             name: "新地点",
             x: "50%", 
@@ -318,7 +517,7 @@ window.GeneralMap = {
 
     deletePin: function(id) {
         if (confirm("确定要永久删除这个地点吗？")) {
-            delete this.mapData[id];
+            delete this.worldData.maps[this.worldData.currentMapId].pins[id];
             this.saveData();
             this.renderMapPins();
             this.closeAllPopups();
@@ -328,7 +527,7 @@ window.GeneralMap = {
     bindPinEvents: function(elm, id) {
         let isDragging = false;
         let startX, startY, initialLeft, initialTop;
-        let hasMoved = false; // 用于区分点击和拖拽
+        let hasMoved = false; 
         const container = document.getElementById('general-map-container');
 
         // --- 鼠标事件 (PC) ---
@@ -350,9 +549,7 @@ window.GeneralMap = {
             if (!isDragging) return;
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
-            
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
-
             let newLeft = initialLeft + dx;
             let newTop = initialTop + dy;
             newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth));
@@ -365,8 +562,9 @@ window.GeneralMap = {
             if (isDragging && hasMoved) {
                 const pctX = (elm.offsetLeft / container.offsetWidth * 100).toFixed(1) + '%';
                 const pctY = (elm.offsetTop / container.offsetHeight * 100).toFixed(1) + '%';
-                this.mapData[id].x = pctX;
-                this.mapData[id].y = pctY;
+                // 更新当前地图数据
+                this.worldData.maps[this.worldData.currentMapId].pins[id].x = pctX;
+                this.worldData.maps[this.worldData.currentMapId].pins[id].y = pctY;
                 this.saveData();
             }
             isDragging = false;
@@ -378,67 +576,53 @@ window.GeneralMap = {
             if (this.isEditing) {
                 isDragging = true;
                 elm.classList.add('dragging');
-                // 获取第一个触摸点
                 const touch = e.touches[0];
                 startX = touch.clientX;
                 startY = touch.clientY;
                 initialLeft = elm.offsetLeft;
                 initialTop = elm.offsetTop;
                 hasMoved = false;
-                // 注意：这里不要立即 preventDefault，否则无法触发点击
             }
         };
 
         const touchMoveHandler = (e) => {
             if (!isDragging) return;
-            
             const touch = e.touches[0];
             const dx = touch.clientX - startX;
             const dy = touch.clientY - startY;
-            
-            // 只有移动超过阈值才视为拖拽，并阻止滚动
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
                 hasMoved = true;
-                if (e.cancelable) e.preventDefault(); // 阻止屏幕跟随手指滚动
+                if (e.cancelable) e.preventDefault(); 
             }
-
             let newLeft = initialLeft + dx;
             let newTop = initialTop + dy;
-            
-            // 边界检查
             newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth));
             newTop = Math.max(0, Math.min(newTop, container.offsetHeight));
-            
             elm.style.left = newLeft + 'px';
             elm.style.top = newTop + 'px';
         };
 
         const touchEndHandler = (e) => {
             if (!isDragging) return;
-            
             if (hasMoved) {
                 const pctX = (elm.offsetLeft / container.offsetWidth * 100).toFixed(1) + '%';
                 const pctY = (elm.offsetTop / container.offsetHeight * 100).toFixed(1) + '%';
-                this.mapData[id].x = pctX;
-                this.mapData[id].y = pctY;
+                this.worldData.maps[this.worldData.currentMapId].pins[id].x = pctX;
+                this.worldData.maps[this.worldData.currentMapId].pins[id].y = pctY;
                 this.saveData();
             }
-            
             isDragging = false;
             elm.classList.remove('dragging');
         };
 
-        // 绑定 PC 鼠标全局监听
         document.addEventListener('mousemove', mouseMoveHandler);
         document.addEventListener('mouseup', mouseUpHandler);
-
-        // 绑定 移动端 触摸监听 (passive: false 允许 preventDefault)
         elm.addEventListener('touchstart', touchStartHandler, { passive: false });
         elm.addEventListener('touchmove', touchMoveHandler, { passive: false });
         elm.addEventListener('touchend', touchEndHandler);
         elm.addEventListener('touchcancel', touchEndHandler);
 
-        // 点击事件：如果是拖拽结束，阻止点击弹窗
+        // --- Click Logic Update for Portals ---
         elm.onclick = (e) => {
             if (hasMoved) { 
                 hasMoved = false; 
@@ -447,6 +631,19 @@ window.GeneralMap = {
                 return; 
             }
             
+            const pinData = this.mapData[id];
+
+            // 如果不是编辑模式，且是传送门，则直接跳转
+            if (!this.isEditing && pinData.type === 'portal') {
+                if (pinData.targetMapId) {
+                    this.switchMap(pinData.targetMapId);
+                } else {
+                    alert("该传送门未设置目标地图 ID。");
+                }
+                return;
+            }
+
+            // 否则打开详情弹窗
             if (id === 'other-places') {
                 this.showCustomTravelPopup();
             } else {
@@ -460,29 +657,53 @@ window.GeneralMap = {
     },
 
     renderPopup: function(id) {
-        const data = this.mapData[id];
+        const data = this.mapData[id]; // use getter
         if (!data) return;
         
         const popup = document.getElementById('dynamic-popup');
         const content = document.getElementById('popup-content');
         const overlay = document.getElementById('general-overlay');
 
+        // Pin 类型选择 HTML (仅编辑模式)
+        let typeSelectHTML = "";
+        if (this.isEditing) {
+            typeSelectHTML = `
+                <div style="margin: 10px 0; padding: 5px; border: 1px dashed #666;">
+                    <label>地点类型: 
+                        <select onchange="window.GeneralMap.updateField('${id}', 'type', this.value); window.GeneralMap.renderPopup('${id}')">
+                            <option value="simple" ${data.type === 'simple' ? 'selected' : ''}>📍 普通地点</option>
+                            <option value="complex" ${data.type === 'complex' ? 'selected' : ''}>🏢 复合建筑 (含楼层)</option>
+                            <option value="portal" ${data.type === 'portal' ? 'selected' : ''}>🌀 传送门 (地图跳转)</option>
+                        </select>
+                    </label>
+                    ${data.type === 'portal' ? `
+                        <div style="margin-top:8px; display:flex; align-items:center;">
+                            <span style="white-space:nowrap;">目标地图ID: </span>
+                            <input type="text" class="travel-input" style="flex:1; margin:0 0 0 8px; padding:4px; text-align:left;" 
+                            value="${data.targetMapId || ''}" 
+                            onblur="window.GeneralMap.updateField('${id}', 'targetMapId', this.value)" placeholder="例: default_world">
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
         let html = `
             <div style="display:flex; justify-content:space-between; align-items:start;">
                 <h3 contenteditable="${this.isEditing}" class="editable-text" style="flex:1" onblur="window.GeneralMap.updateField('${id}', 'name', this.innerText)">${Sanitize.encode(data.name)}</h3>
                 ${this.isEditing ? `<button class="general-btn small danger" onclick="window.GeneralMap.deletePin('${id}')">🗑️ 删除</button>` : ''}
             </div>
-            
+            ${typeSelectHTML}
             <p contenteditable="${this.isEditing}" class="editable-text" onblur="window.GeneralMap.updateField('${id}', 'desc', this.innerText)">${Sanitize.encode(data.desc || "暂无描述")}</p>
         `;
 
         if (data.image) {
             html += `<img src="${data.image}" class="popup-image">`;
-        } else if (this.isEditing) {
+        } else if (this.isEditing && data.type !== 'portal') {
             html += `<div style="border:1px dashed #666; padding:20px; text-align:center; color:#666">暂无封面图</div>`;
         }
 
-        if (this.isEditing) {
+        if (this.isEditing && data.type !== 'portal') {
             html += `
                 <div class="edit-controls">
                     <button class="general-btn small" onclick="document.getElementById('img-upload-${id}').click()">📷 更换封面</button>
@@ -492,14 +713,21 @@ window.GeneralMap = {
             `;
         }
 
+        // 底部按钮区域
         html += `<div style="text-align:center; margin-top:15px; display:flex; gap:10px; justify-content:center;">`;
-        if (data.type === 'complex' || (this.isEditing && data.floors)) {
-            html += `<button class="general-btn" onclick="window.GeneralMap.renderInterior('${id}')">🚪 进入内部</button>`;
-        } else if (this.isEditing) {
-            html += `<button class="general-btn small" onclick="window.GeneralMap.addFloor('${id}')">➕ 添加楼层/区域</button>`;
+        
+        if (data.type === 'portal') {
+             html += `<button class="general-btn" onclick="window.GeneralMap.switchMap('${data.targetMapId}')">🌀 进入该区域</button>`;
+        } else {
+            if (data.type === 'complex' || (this.isEditing && data.floors)) {
+                html += `<button class="general-btn" onclick="window.GeneralMap.renderInterior('${id}')">🚪 进入内部</button>`;
+            } else if (this.isEditing) {
+                // 如果是 simple 但想加楼层
+                html += `<button class="general-btn small" onclick="window.GeneralMap.addFloor('${id}')">➕ 添加楼层/区域</button>`;
+            }
+            html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(data.name)}')">🚀 前往此处</button>`;
         }
         
-        html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(data.name)}')">🚀 前往此处</button>`;
         html += `</div>`;
 
         content.innerHTML = html;
@@ -595,32 +823,35 @@ window.GeneralMap = {
             label.innerText = "✏️ 编辑模式";
             label.style.color = "#888";
         }
+        this.renderMapPins(); // Re-render to show/hide edit cues
     },
 
     updateField: function(id, field, value) {
-        if (!this.mapData[id]) return;
-        this.mapData[id][field] = value;
+        if (!this.worldData.maps[this.worldData.currentMapId].pins[id]) return;
+        this.worldData.maps[this.worldData.currentMapId].pins[id][field] = value;
         this.saveData();
-        if (field === 'name') this.renderMapPins();
+        if (field === 'name' || field === 'type') this.renderMapPins();
     },
 
     updateFloor: function(id, floorIndex, field, value) {
-        if (!this.mapData[id] || !this.mapData[id].floors[floorIndex]) return;
-        this.mapData[id].floors[floorIndex][field] = value;
+        const pin = this.worldData.maps[this.worldData.currentMapId].pins[id];
+        if (!pin || !pin.floors[floorIndex]) return;
+        pin.floors[floorIndex][field] = value;
         this.saveData();
     },
 
     addFloor: function(id) {
-        if (!this.mapData[id].floors) this.mapData[id].floors = [];
-        this.mapData[id].floors.push({ name: "新区域 " + (this.mapData[id].floors.length + 1), content: "描述..." });
-        this.mapData[id].type = 'complex'; 
+        const pin = this.worldData.maps[this.worldData.currentMapId].pins[id];
+        if (!pin.floors) pin.floors = [];
+        pin.floors.push({ name: "新区域 " + (pin.floors.length + 1), content: "描述..." });
+        pin.type = 'complex'; 
         this.saveData();
         this.renderInterior(id); 
     },
 
     deleteFloor: function(id, index) {
         if(confirm("确定删除吗？")) {
-            this.mapData[id].floors.splice(index, 1);
+            this.worldData.maps[this.worldData.currentMapId].pins[id].floors.splice(index, 1);
             this.saveData();
             this.renderInterior(id);
         }
@@ -630,7 +861,7 @@ window.GeneralMap = {
         if (input.files && input.files[0]) {
             const file = input.files[0];
             compressImage(file, 600, 0.6).then((base64Data) => {
-                this.mapData[id][field] = base64Data;
+                this.worldData.maps[this.worldData.currentMapId].pins[id][field] = base64Data;
                 this.saveData();
                 if (field === 'image') this.renderPopup(id);
                 if (field === 'internalImage') this.renderInterior(id);
@@ -641,27 +872,33 @@ window.GeneralMap = {
         }
     },
     
+    // 背景图现在属于 Current Map
     changeBackground: function(input) {
         if (input.files && input.files[0]) {
             compressImage(input.files[0], 1024, 0.7).then(async (bgData) => {
                 document.getElementById('general-map-container').style.backgroundImage = `url(${bgData})`;
-                try {
-                    await SimpleDB.setItem('general_map_bg_v2', bgData);
-                } catch (e) {
-                     alert("背景图保存失败：" + e.message);
-                }
+                
+                // Save to current map structure
+                this.worldData.maps[this.worldData.currentMapId].background = bgData;
+                await this.saveData();
             });
         }
     },
 
     loadBackground: async function() {
-        let bg = await SimpleDB.getItem('general_map_bg_v2');
-        if (!bg) bg = localStorage.getItem('general_map_bg_v2'); 
-        if (bg) document.getElementById('general-map-container').style.backgroundImage = `url(${bg})`;
+        const currentMap = this.worldData.maps[this.worldData.currentMapId];
+        let bg = currentMap.background;
+        
+        // 如果当前地图没背景，显示默认或空
+        if (bg) {
+            document.getElementById('general-map-container').style.backgroundImage = `url(${bg})`;
+        } else {
+             document.getElementById('general-map-container').style.backgroundImage = 'none';
+        }
     },
 
     // ==========================================
-    // 出行逻辑 (V6 Update: NPC & Activity)
+    // 出行逻辑
     // ==========================================
     closeAllPopups: function() {
         $('#general-overlay').hide();
@@ -683,14 +920,12 @@ window.GeneralMap = {
         box.css('display', 'flex');
     },
 
-    // 1. 打开目的地界面
     openTravelMenu: function(destination) {
         if(!destination) return alert("请输入目的地");
         this.tempTravelData.destination = destination;
         
         const box = $('#travel-menu-overlay');
         
-        // [新增] 遇见 NPC 选项
         box.find('.travel-options').html(`
             <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">目的地：${Sanitize.encode(destination)}</div>
             
@@ -721,10 +956,6 @@ window.GeneralMap = {
     },
 
     showCompanionInput: function() {
-        // 在进入同伴输入前，先保存一下 NPC 状态（如果有的话），或者直接在 confirmTravel 里统一获取
-        // 这里为了简化流程，我们假设用户已经填好了 NPC 状态，点击“邀请某人”是中间步骤
-        
-        // 保存当前 NPC 设置到 temp
         const npcToggle = document.getElementById('meet-npc-toggle');
         if(npcToggle) {
              this.tempTravelData.meetNPC = npcToggle.checked;
@@ -739,9 +970,7 @@ window.GeneralMap = {
         `);
     },
 
-    // 2. 确认出行方式（独自/陪伴），进入活动选择
     confirmTravel: function(isAlone) {
-        // 如果是从主菜单直接点击“独自前往”，需要获取 NPC 数据
         if (isAlone) {
              const npcToggle = document.getElementById('meet-npc-toggle');
              if(npcToggle) {
@@ -749,7 +978,6 @@ window.GeneralMap = {
                  this.tempTravelData.meetNPCName = $('#meet-npc-name').val() || '';
              }
         } else {
-             // 如果是同伴模式，名字在 companion-input 里
              const companionName = $('#companion-name').val();
              if (!companionName) return alert("请输入姓名");
              this.tempTravelData.companionName = companionName;
@@ -759,7 +987,6 @@ window.GeneralMap = {
         this.showActivitySelection();
     },
 
-    // 3. [新增] 活动选择弹窗
     showActivitySelection: function() {
         const activities = ['闲逛', '吃饭', '喝酒', '约会', '睡觉', '做爱'];
         const box = $('#travel-menu-overlay');
@@ -788,7 +1015,6 @@ window.GeneralMap = {
         box.find('.travel-options').html(html);
     },
 
-    // 4. 生成最终文本并执行
     finalizeTravel: function(activity) {
         if (!activity) return alert("请选择或输入活动内容");
 
@@ -797,20 +1023,16 @@ window.GeneralMap = {
         
         let outputText = "";
         
-        // 构建第一部分：去哪里
         if (isAlone) {
             outputText += `${userPlaceholder} 决定独自前往 ${destination}`;
         } else {
             outputText += `${userPlaceholder} 邀请 ${companionName} 前往 ${destination}`;
         }
 
-        // 构建第二部分：遇见NPC
         if (meetNPC && meetNPCName) {
             outputText += `，并在那里遇见 ${meetNPCName}`;
         }
 
-        // 构建第三部分：活动
-        // 简单自然语言拼接
         outputText += `。活动内容：${activity}。`;
 
         if (stContext) {
@@ -838,35 +1060,37 @@ const initInterval = setInterval(() => {
 }, 500);
 
 async function initializeExtension() {
-    console.log("[General Map] Initializing V7 (Features Added)...");
+    console.log("[General Map] Starting Initialization...");
 
+    // 1. 清理旧元素
     $('#general-map-panel').remove();
     $('#general-toggle-btn').remove();
     $('link[href*="General_Map/style.css"]').remove();
 
+    // 2. 加载 CSS
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = `${extensionPath}/style.css`;
     document.head.appendChild(link);
 
-    // [新增] 悬挂小图标逻辑 - 移动端默认居中
+    // 3. 计算位置
     let defaultTop = '130px';
     let defaultLeft = '10px';
     let transformStyle = '';
     
-    // 简单判断是否移动端 (屏幕宽度小于 768px)
     if (window.innerWidth <= 768) {
         defaultTop = '50%';
         defaultLeft = '50%';
         transformStyle = 'translate(-50%, -50%)';
     }
 
+    // 4. 插入 HTML (注意 z-index 提高到了 20005)
     const panelHTML = `
         <div id="general-toggle-btn" title="打开 General 地图" 
-             style="position:fixed; top:${defaultTop}; left:${defaultLeft}; transform:${transformStyle}; z-index:9000; width:45px; height:45px; background:#b38b59; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); color:#fff; font-size:22px;">
+             style="position:fixed; top:${defaultTop}; left:${defaultLeft}; transform:${transformStyle}; z-index:20005; width:45px; height:45px; background:#b38b59; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); color:#fff; font-size:22px; user-select:none;">
             🗺️
         </div>
-        <div id="general-map-panel">
+        <div id="general-map-panel" style="z-index:20005;">
             <div id="general-drag-handle">
                 <span>General 档案地图</span>
                 <span id="general-close-btn">❌</span>
@@ -876,56 +1100,91 @@ async function initializeExtension() {
     `;
     $('body').append(panelHTML);
 
-    try {
-        const response = await fetch(`${extensionPath}/map.html`);
-        if (!response.ok) throw new Error("Map file not found");
-        const htmlContent = await response.text();
-        $('#general-content-area').html(htmlContent);
-        await window.GeneralMap.init();
-
-    } catch (e) {
-        console.error("[General Map] Error:", e);
-        $('#general-content-area').html(`<p style="padding:20px; color:white;">加载失败: ${e.message}</p>`);
-    }
-
-    // [新增] 悬挂图标拖拽逻辑
+    // ============================================================
+    // 事件绑定区域 (修复点击/拖拽冲突)
+    // ============================================================
     const toggleBtn = $('#general-toggle-btn');
-    let isDraggingIcon = false;
+    const closeBtn = $('#general-close-btn');
+    const panel = $('#general-map-panel');
+    
+    // 标记是否正在拖拽
+    let isDragging = false;
 
+    // 绑定关闭按钮
+    closeBtn.on('click', (e) => {
+        e.stopPropagation(); // 防止冒泡
+        panel.fadeOut();
+    });
+
+    // 绑定拖拽逻辑
     if ($.fn.draggable) {
         toggleBtn.draggable({
             containment: "window",
             scroll: false,
-            start: function() {
-                isDraggingIcon = true;
+            distance: 10, // 【关键修复】: 鼠标移动超过 10px 才算拖拽，防止点击误触
+            start: function() { 
+                isDragging = true; 
+                console.log("[General Map] Drag Started");
             },
-            stop: function() {
-                // 延迟重置状态，防止拖拽结束时立即触发 click
-                setTimeout(() => {
-                    isDraggingIcon = false;
-                }, 100);
+            stop: function() { 
+                console.log("[General Map] Drag Stopped");
+                // 延迟重置，确保 click 事件在判定期间被忽略
+                setTimeout(() => { isDragging = false; }, 200); 
             }
         });
+        
+        panel.draggable({ 
+            handle: '#general-drag-handle',
+            containment: 'window'
+        });
+    } else {
+        console.warn("[General Map] jQuery UI Draggable not found. Dragging disabled.");
     }
 
-    toggleBtn.on('click', () => {
-        if (isDraggingIcon) return; // 如果是拖拽结束，不触发点击
+    // 绑定点击开/关逻辑
+    toggleBtn.on('click', (e) => {
+        console.log("[General Map] Click Detected. isDragging =", isDragging);
         
-        const panel = $('#general-map-panel');
+        // 如果判定为拖拽中，则拦截点击
+        if (isDragging) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+
+        // 正常切换显示
         if (panel.is(':visible')) {
             panel.fadeOut();
         } else {
             panel.fadeIn();
+            // 如果内容区是空的，显示 Loading（防止网络慢时看起来像坏了）
+            if($.trim($('#general-content-area').html()) === "") {
+                $('#general-content-area').html('<div style="padding:20px;">Loading...</div>');
+            }
         }
     });
-    
-    $('#general-close-btn').on('click', () => $('#general-map-panel').fadeOut());
 
-    if ($.fn.draggable) {
-        $('#general-map-panel').draggable({ 
-            handle: '#general-drag-handle',
-            containment: 'window'
-        });
+    // ============================================================
+    // 5. 异步加载数据
+    // ============================================================
+    try {
+        console.log("[General Map] Fetching HTML & Data...");
+        const response = await fetch(`${extensionPath}/map.html`);
+        if (!response.ok) throw new Error("Map file not found");
+        const htmlContent = await response.text();
+        $('#general-content-area').html(htmlContent);
+        
+        // 初始化数据
+        await window.GeneralMap.init();
+        console.log("[General Map] Initialization Complete.");
+
+    } catch (e) {
+        console.error("[General Map] Error:", e);
+        $('#general-content-area').html(`<div style="padding:20px; color:#e57373;">
+            <h3>加载失败</h3>
+            <p>错误信息: ${e.message}</p>
+            <p>请按 F12 查看控制台。</p>
+            <button class="general-btn" onclick="window.GeneralMap.resetData()">重置数据</button>
+        </div>`);
     }
 }
-
