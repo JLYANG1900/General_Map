@@ -3,6 +3,9 @@
     
     <!-- 顶部控制栏 -->
     <div class="controls-bar">
+        <!-- V3新增：返回上一层按钮 (默认隐藏) -->
+        <button id="map-back-btn" class="general-btn danger" style="display:none;" onclick="window.GeneralMap.goBackMap()">⬅️ 返回上一层</button>
+
         <!-- 编辑开关 -->
         <div class="edit-toggle-wrapper">
             <label class="switch">
@@ -23,8 +26,7 @@
         <button class="general-btn" onclick="document.getElementById('backup-upload').click()">📥 导入备份</button>
         <input type="file" id="backup-upload" style="display:none" accept=".json" onchange="window.GeneralMap.importBackup(this)">
 
-        <!-- 背景更换 -->
-        <button class="general-btn" onclick="document.getElementById('bg-upload').click()">📂 更换背景...</button>
+        <!-- 背景更换 (已移动至下方) -->
         <input type="file" id="bg-upload" accept="image/*" style="display:none;" onchange="window.GeneralMap.changeBackground(this)">
 
         <!-- 新增：主题颜色选择器 -->
@@ -34,7 +36,11 @@
         </div>
     </div>
 
-    <h2 id="subtitle-text">双击地标查看详情，长按拖拽移动 (编辑模式下可直接拖拽)</h2>
+    <!-- 副标题区域：包含背景更换按钮和当前区域信息 -->
+    <h2 style="display:flex; align-items:center; justify-content:center; gap:10px;">
+        <button class="general-btn small" onclick="document.getElementById('bg-upload').click()">📂 更换背景...</button>
+        <span id="subtitle-text">双击地标查看详情，长按拖拽移动 (编辑模式下可直接拖拽)</span>
+    </h2>
 
     <!-- 地图容器：内容由 JS 动态生成 -->
     <div class="map-container" id="general-map-container">
