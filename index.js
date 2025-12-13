@@ -1048,10 +1048,11 @@ window.GeneralMap = {
 };
 
 // ==========================================
-// 初始化逻辑
+// 初始化逻辑 (修复版)
 // ==========================================
 
 const initInterval = setInterval(() => {
+    // 确保依赖项已加载
     if (window.SillyTavern && window.SillyTavern.getContext && window.jQuery) {
         clearInterval(initInterval);
         stContext = window.SillyTavern.getContext();
@@ -1067,13 +1068,13 @@ async function initializeExtension() {
     $('#general-toggle-btn').remove();
     $('link[href*="General_Map/style.css"]').remove();
 
-    // 2. 加载 CSS
+    // 2. 尝试加载 CSS
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = `${extensionPath}/style.css`;
     document.head.appendChild(link);
 
-    // 3. 计算位置
+    // 3. 计算按钮位置
     let defaultTop = '130px';
     let defaultLeft = '10px';
     let transformStyle = '';
@@ -1084,52 +1085,50 @@ async function initializeExtension() {
         transformStyle = 'translate(-50%, -50%)';
     }
 
-    // 4. 插入 HTML (注意 z-index 提高到了 20005)
+    // 4. 插入 HTML
+    // [修复]: 在这里直接添加关键样式 (position, size, background)，防止 CSS 加载失败时面板不可见
     const panelHTML = `
         <div id="general-toggle-btn" title="打开 General 地图" 
-             style="position:fixed; top:${defaultTop}; left:${defaultLeft}; transform:${transformStyle}; z-index:20005; width:45px; height:45px; background:#b38b59; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); color:#fff; font-size:22px; user-select:none;">
+             style="position:fixed; top:${defaultTop}; left:${defaultLeft}; transform:${transformStyle}; z-index:20006; width:45px; height:45px; background:#b38b59; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); color:#fff; font-size:22px; user-select:none;">
             🗺️
         </div>
-        <div id="general-map-panel" style="z-index:20005;">
-            <div id="general-drag-handle">
+        <div id="general-map-panel" 
+             style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 760px; height: 85vh; background: #1a1a1a; border: 2px solid #b38b59; border-radius: 8px; z-index: 20005; display: none; overflow: hidden; box-shadow: 0 0 50px rgba(0,0,0,0.9);">
+            <div id="general-drag-handle" style="width: 100%; height: 40px; background: #242424; cursor: move; display: flex; justify-content: center; align-items: center; border-bottom: 1px solid #b38b59; color: #e0c5a1;">
                 <span>General 档案地图</span>
-                <span id="general-close-btn">❌</span>
+                <span id="general-close-btn" style="position: absolute; right: 15px; cursor: pointer;">❌</span>
             </div>
-            <div id="general-content-area">Loading...</div>
+            <div id="general-content-area" style="height: calc(100% - 40px); overflow-y: auto; padding:0;">Loading...</div>
         </div>
     `;
     $('body').append(panelHTML);
 
     // ============================================================
-    // 事件绑定区域 (修复点击/拖拽冲突)
+    // 事件绑定区域
     // ============================================================
     const toggleBtn = $('#general-toggle-btn');
     const closeBtn = $('#general-close-btn');
     const panel = $('#general-map-panel');
     
-    // 标记是否正在拖拽
     let isDragging = false;
 
     // 绑定关闭按钮
     closeBtn.on('click', (e) => {
-        e.stopPropagation(); // 防止冒泡
+        e.stopPropagation();
         panel.fadeOut();
     });
 
-    // 绑定拖拽逻辑
+    // 绑定拖拽逻辑 (jQuery UI)
     if ($.fn.draggable) {
         toggleBtn.draggable({
             containment: "window",
             scroll: false,
-            distance: 10, // 【关键修复】: 鼠标移动超过 10px 才算拖拽，防止点击误触
+            distance: 5, // 稍微减小距离判定
             start: function() { 
                 isDragging = true; 
-                console.log("[General Map] Drag Started");
             },
             stop: function() { 
-                console.log("[General Map] Drag Stopped");
-                // 延迟重置，确保 click 事件在判定期间被忽略
-                setTimeout(() => { isDragging = false; }, 200); 
+                setTimeout(() => { isDragging = false; }, 100); 
             }
         });
         
@@ -1137,29 +1136,25 @@ async function initializeExtension() {
             handle: '#general-drag-handle',
             containment: 'window'
         });
-    } else {
-        console.warn("[General Map] jQuery UI Draggable not found. Dragging disabled.");
     }
 
     // 绑定点击开/关逻辑
     toggleBtn.on('click', (e) => {
-        console.log("[General Map] Click Detected. isDragging =", isDragging);
-        
-        // 如果判定为拖拽中，则拦截点击
+        // 如果正在拖拽，或者刚拖拽完，则不执行点击
         if (isDragging) {
             e.preventDefault();
             e.stopPropagation();
             return;
         }
 
-        // 正常切换显示
         if (panel.is(':visible')) {
             panel.fadeOut();
         } else {
             panel.fadeIn();
-            // 如果内容区是空的，显示 Loading（防止网络慢时看起来像坏了）
-            if($.trim($('#general-content-area').html()) === "") {
-                $('#general-content-area').html('<div style="padding:20px;">Loading...</div>');
+            // 重新获取焦点或检查内容
+            if($.trim($('#general-content-area').text()) === "Loading...") {
+                // 如果还显示 Loading，可能是初始化失败了，尝试重新显示错误信息
+                console.log("Panel opened but content is still loading.");
             }
         }
     });
@@ -1168,23 +1163,33 @@ async function initializeExtension() {
     // 5. 异步加载数据
     // ============================================================
     try {
-        console.log("[General Map] Fetching HTML & Data...");
+        console.log(`[General Map] Fetching HTML from: ${extensionPath}/map.html`);
         const response = await fetch(`${extensionPath}/map.html`);
-        if (!response.ok) throw new Error("Map file not found");
+        
+        if (!response.ok) {
+            throw new Error(`无法加载地图文件 (Status: ${response.status})。请检查插件文件夹名称是否为 "General_Map"。`);
+        }
+        
         const htmlContent = await response.text();
         $('#general-content-area').html(htmlContent);
         
-        // 初始化数据
+        // 初始化 JS 数据
         await window.GeneralMap.init();
         console.log("[General Map] Initialization Complete.");
 
     } catch (e) {
         console.error("[General Map] Error:", e);
-        $('#general-content-area').html(`<div style="padding:20px; color:#e57373;">
-            <h3>加载失败</h3>
-            <p>错误信息: ${e.message}</p>
-            <p>请按 F12 查看控制台。</p>
-            <button class="general-btn" onclick="window.GeneralMap.resetData()">重置数据</button>
-        </div>`);
+        // 将错误信息显示在面板里 (因为我们加了内联样式，所以现在面板一定可见)
+        $('#general-content-area').html(`
+            <div style="padding:20px; color:#e57373; text-align:center; font-family:sans-serif;">
+                <h3>⚠️ 启动失败</h3>
+                <p>${e.message}</p>
+                <div style="margin-top:15px; font-size:12px; color:#888;">
+                    提示：请确保插件安装路径为:<br>
+                    <code>.../extensions/third-party/General_Map</code>
+                </div>
+                <button onclick="window.GeneralMap.resetData()" style="margin-top:20px; padding:5px 10px; background:#333; color:#fff; border:1px solid #666; cursor:pointer;">尝试重置数据</button>
+            </div>
+        `);
     }
 }
