@@ -15,6 +15,49 @@ const Sanitize = {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    },
+
+    jsArg: function(value) {
+        return JSON.stringify(value == null ? "" : String(value))
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+};
+
+const GMIcon = {
+    paths: {
+        add: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+        back: '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>',
+        building: '<path d="M4 21h16"/><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M9 8h1"/><path d="M14 8h1"/><path d="M9 12h1"/><path d="M14 12h1"/><path d="M10 21v-4h4v4"/>',
+        camera: '<path d="M14.5 4 16 7h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3l1.5-3h5Z"/><circle cx="12" cy="13" r="3"/>',
+        close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+        door: '<path d="M5 21h14"/><path d="M7 21V5a2 2 0 0 1 2-2h6v18"/><path d="M11 12h.01"/>',
+        edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/>',
+        export: '<path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/>',
+        folder: '<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+        import: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
+        map: '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z"/><path d="M9 3v15"/><path d="M15 6v15"/>',
+        palette: '<path d="M12 22a10 10 0 1 1 10-10c0 2.2-1.4 3-3 3h-1.5a1.5 1.5 0 0 0 0 3H18a2 2 0 0 1 0 4h-6Z"/><circle cx="7.5" cy="10" r=".75"/><circle cx="10.5" cy="7" r=".75"/><circle cx="14" cy="7.5" r=".75"/><circle cx="16.5" cy="11" r=".75"/>',
+        pin: '<path d="M12 21s7-5.4 7-12a7 7 0 1 0-14 0c0 6.6 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/>',
+        portal: '<path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7a5 5 0 1 0 5 5"/><path d="M12 11a1 1 0 1 0 1 1"/><path d="M16 3h5v5"/><path d="m21 3-7 7"/>',
+        reset: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/>',
+        trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m6 6 1 15h10l1-15"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+        travel: '<path d="M2 16 22 7l-8 15-3-7-9 1Z"/><path d="m11 15 4-4"/>',
+        user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+        users: '<circle cx="9" cy="8" r="3"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M16 11a3 3 0 1 0-1-5.8"/><path d="M17 21a6 6 0 0 0-3-5.2"/>',
+        warning: '<path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5"/><path d="M12 17h.01"/>'
+    },
+
+    svg: function(name, extraClass = "") {
+        const path = this.paths[name] || this.paths.pin;
+        const className = `gm-icon gm-icon-${name}${extraClass ? ` ${extraClass}` : ""}`;
+        return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${path}</svg>`;
+    },
+
+    label: function(name, text, extraClass = "") {
+        return `${this.svg(name, extraClass)}<span>${Sanitize.encode(text)}</span>`;
     }
 };
 
@@ -179,6 +222,8 @@ window.GeneralMap = {
     mapHistory: [],      // V3 新增: 历史堆栈，用于"返回上一层"
     isEditing: false,    
     themeColor: '#b38b59',
+    controlsCollapsed: false,
+    pinEventCleanups: [],
     
     // 临时存储出行信息
     tempTravelData: {
@@ -203,6 +248,7 @@ window.GeneralMap = {
         // 渲染逻辑移到 loadBackground 内部或之后
         await this.loadBackground(); 
         this.renderMapPins();
+        this.initControlsPanel();
         this.updateUIControls();
     },
 
@@ -387,6 +433,27 @@ window.GeneralMap = {
         }
     },
 
+    initControlsPanel: function() {
+        this.controlsCollapsed = localStorage.getItem('general_map_controls_collapsed') === 'true';
+        this.applyControlsPanelState();
+    },
+
+    toggleControlsPanel: function() {
+        this.controlsCollapsed = !this.controlsCollapsed;
+        localStorage.setItem('general_map_controls_collapsed', String(this.controlsCollapsed));
+        this.applyControlsPanelState();
+    },
+
+    applyControlsPanelState: function() {
+        const panel = document.getElementById('general-controls-panel');
+        const button = document.getElementById('controls-collapse-btn');
+        if (!panel || !button) return;
+
+        panel.classList.toggle('is-collapsed', this.controlsCollapsed);
+        button.innerText = this.controlsCollapsed ? '展开' : '收起';
+        button.setAttribute('aria-expanded', String(!this.controlsCollapsed));
+    },
+
     // ==========================================
     // 导入/导出
     // ==========================================
@@ -472,6 +539,8 @@ window.GeneralMap = {
     // ==========================================
     renderMapPins: function() {
         const container = document.getElementById('general-map-container');
+        this.pinEventCleanups.forEach(cleanup => cleanup());
+        this.pinEventCleanups = [];
         container.querySelectorAll('.location').forEach(el => el.remove());
 
         // 使用 getter 获取当前地图的 pins
@@ -484,12 +553,15 @@ window.GeneralMap = {
             div.style.left = loc.x;
             div.style.top = loc.y;
             if (loc.color) div.style.color = loc.color;
+            if (loc.bgColor) div.style.backgroundColor = loc.bgColor;
             
-            // 如果是传送门，加个特殊标识
-            let icon = '';
-            if (loc.type === 'portal') icon = '🌀 ';
-            
-            div.innerHTML = `<span class="label">${icon}${Sanitize.encode(loc.name)}</span>`;
+            const pinIcon = loc.type === 'portal'
+                ? GMIcon.svg('portal', 'pin-type-icon')
+                : loc.type === 'complex'
+                    ? GMIcon.svg('building', 'pin-type-icon')
+                    : GMIcon.svg('pin', 'pin-type-icon');
+
+            div.innerHTML = `${pinIcon}<span class="label">${Sanitize.encode(loc.name)}</span>`;
             this.bindPinEvents(div, loc.id);
             container.appendChild(div);
         });
@@ -508,7 +580,7 @@ window.GeneralMap = {
             y: "50%", 
             desc: "点击编辑描述", 
             type: "simple", 
-            color: this.themeColor 
+            color: "#e0c5a1"
         };
         this.saveData();
         this.renderMapPins();
@@ -621,6 +693,17 @@ window.GeneralMap = {
         elm.addEventListener('touchmove', touchMoveHandler, { passive: false });
         elm.addEventListener('touchend', touchEndHandler);
         elm.addEventListener('touchcancel', touchEndHandler);
+        this.pinEventCleanups.push(() => {
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+            elm.removeEventListener('touchstart', touchStartHandler);
+            elm.removeEventListener('touchmove', touchMoveHandler);
+            elm.removeEventListener('touchend', touchEndHandler);
+            elm.removeEventListener('touchcancel', touchEndHandler);
+            elm.onmousedown = null;
+            elm.onclick = null;
+            elm.ondblclick = null;
+        });
 
         // --- Click Logic Update for Portals ---
         elm.onclick = (e) => {
@@ -659,6 +742,9 @@ window.GeneralMap = {
     renderPopup: function(id) {
         const data = this.mapData[id]; // use getter
         if (!data) return;
+        const idArg = Sanitize.jsArg(id);
+        const nameArg = Sanitize.jsArg(data.name);
+        const targetMapArg = Sanitize.jsArg(data.targetMapId || "");
         
         const popup = document.getElementById('dynamic-popup');
         const content = document.getElementById('popup-content');
@@ -669,32 +755,57 @@ window.GeneralMap = {
         if (this.isEditing) {
             typeSelectHTML = `
                 <div style="margin: 10px 0; padding: 5px; border: 1px dashed #666;">
-                    <label>地点类型: 
-                        <select onchange="window.GeneralMap.updateField('${id}', 'type', this.value); window.GeneralMap.renderPopup('${id}')">
-                            <option value="simple" ${data.type === 'simple' ? 'selected' : ''}>📍 普通地点</option>
-                            <option value="complex" ${data.type === 'complex' ? 'selected' : ''}>🏢 复合建筑 (含楼层)</option>
-                            <option value="portal" ${data.type === 'portal' ? 'selected' : ''}>🌀 传送门 (地图跳转)</option>
+                    <label class="gm-inline-label">${GMIcon.label('pin', '地点类型:')}
+                        <select onchange="window.GeneralMap.updateField(${idArg}, 'type', this.value); window.GeneralMap.renderPopup(${idArg})">
+                            <option value="simple" ${data.type === 'simple' ? 'selected' : ''}>普通地点</option>
+                            <option value="complex" ${data.type === 'complex' ? 'selected' : ''}>复合建筑 (含楼层)</option>
+                            <option value="portal" ${data.type === 'portal' ? 'selected' : ''}>传送门 (地图跳转)</option>
                         </select>
                     </label>
                     ${data.type === 'portal' ? `
                         <div style="margin-top:8px; display:flex; align-items:center;">
                             <span style="white-space:nowrap;">目标地图ID: </span>
                             <input type="text" class="travel-input" style="flex:1; margin:0 0 0 8px; padding:4px; text-align:left;" 
-                            value="${data.targetMapId || ''}" 
-                            onblur="window.GeneralMap.updateField('${id}', 'targetMapId', this.value)" placeholder="例: default_world">
+                            value="${Sanitize.encode(data.targetMapId || '')}" 
+                            onblur="window.GeneralMap.updateField(${idArg}, 'targetMapId', this.value)" placeholder="例: default_world">
                         </div>
                     ` : ''}
                 </div>
             `;
         }
 
+        let styleControlsHTML = "";
+        if (this.isEditing) {
+            styleControlsHTML = `
+                <div class="pin-style-controls">
+                    <label>
+                        <span>地点小图标字体颜色</span>
+                        <input type="color" value="${Sanitize.encode(data.color || '#e0c5a1')}" onchange="window.GeneralMap.updateField(${idArg}, 'color', this.value)">
+                    </label>
+                    <label>
+                        <span>文本框背景颜色</span>
+                        <input type="color" value="${Sanitize.encode(data.bgColor || '#000000')}" onchange="window.GeneralMap.updateField(${idArg}, 'bgColor', this.value)">
+                    </label>
+                </div>
+            `;
+        }
+
+        const introText = data.introduction || "";
+        const introDisplayText = introText || (this.isEditing ? "" : "暂无地点介绍");
+        const introClass = introText ? "location-intro-body editable-text" : "location-intro-body editable-text is-empty";
+
         let html = `
             <div style="display:flex; justify-content:space-between; align-items:start;">
-                <h3 contenteditable="${this.isEditing}" class="editable-text" style="flex:1" onblur="window.GeneralMap.updateField('${id}', 'name', this.innerText)">${Sanitize.encode(data.name)}</h3>
-                ${this.isEditing ? `<button class="general-btn small danger" onclick="window.GeneralMap.deletePin('${id}')">🗑️ 删除</button>` : ''}
+                <h3 contenteditable="${this.isEditing}" class="editable-text" style="flex:1" onblur="window.GeneralMap.updateField(${idArg}, 'name', this.innerText)">${Sanitize.encode(data.name)}</h3>
+                ${this.isEditing ? `<button class="general-btn small danger" onclick="window.GeneralMap.deletePin(${idArg})">${GMIcon.label('trash', '删除')}</button>` : ''}
             </div>
             ${typeSelectHTML}
-            <p contenteditable="${this.isEditing}" class="editable-text" onblur="window.GeneralMap.updateField('${id}', 'desc', this.innerText)">${Sanitize.encode(data.desc || "暂无描述")}</p>
+            ${styleControlsHTML}
+            <p contenteditable="${this.isEditing}" class="editable-text" onblur="window.GeneralMap.updateField(${idArg}, 'desc', this.innerText)">${Sanitize.encode(data.desc || "暂无描述")}</p>
+            <div class="location-intro">
+                <div class="location-intro-label">地点介绍</div>
+                <div contenteditable="${this.isEditing}" class="${introClass}" data-placeholder="点击添加地点介绍..." oninput="this.classList.toggle('is-empty', !this.innerText.trim())" onblur="this.classList.toggle('is-empty', !this.innerText.trim()); window.GeneralMap.updateField(${idArg}, 'introduction', this.innerText)">${Sanitize.encode(introDisplayText)}</div>
+            </div>
         `;
 
         if (data.image) {
@@ -706,9 +817,9 @@ window.GeneralMap = {
         if (this.isEditing && data.type !== 'portal') {
             html += `
                 <div class="edit-controls">
-                    <button class="general-btn small" onclick="document.getElementById('img-upload-${id}').click()">📷 更换封面</button>
-                    <input type="file" id="img-upload-${id}" style="display:none" accept="image/*" onchange="window.GeneralMap.uploadImage('${id}', 'image', this)">
-                    ${data.image ? `<button class="general-btn small danger" onclick="window.GeneralMap.updateField('${id}', 'image', '')">🗑️ 删除图</button>` : ''}
+                    <button class="general-btn small" onclick="this.nextElementSibling.click()">${GMIcon.label('camera', '更换封面')}</button>
+                    <input type="file" style="display:none" accept="image/*" onchange="window.GeneralMap.uploadImage(${idArg}, 'image', this)">
+                    ${data.image ? `<button class="general-btn small danger" onclick="window.GeneralMap.updateField(${idArg}, 'image', '')">${GMIcon.label('trash', '删除图')}</button>` : ''}
                 </div>
             `;
         }
@@ -717,15 +828,15 @@ window.GeneralMap = {
         html += `<div style="text-align:center; margin-top:15px; display:flex; gap:10px; justify-content:center;">`;
         
         if (data.type === 'portal') {
-             html += `<button class="general-btn" onclick="window.GeneralMap.switchMap('${data.targetMapId}')">🌀 进入该区域</button>`;
+             html += `<button class="general-btn" onclick="window.GeneralMap.switchMap(${targetMapArg})">${GMIcon.label('portal', '进入该区域')}</button>`;
         } else {
             if (data.type === 'complex' || (this.isEditing && data.floors)) {
-                html += `<button class="general-btn" onclick="window.GeneralMap.renderInterior('${id}')">🚪 进入内部</button>`;
+                html += `<button class="general-btn" onclick="window.GeneralMap.renderInterior(${idArg})">${GMIcon.label('door', '进入内部')}</button>`;
             } else if (this.isEditing) {
                 // 如果是 simple 但想加楼层
-                html += `<button class="general-btn small" onclick="window.GeneralMap.addFloor('${id}')">➕ 添加楼层/区域</button>`;
+                html += `<button class="general-btn small" onclick="window.GeneralMap.addFloor(${idArg})">${GMIcon.label('add', '添加楼层/区域')}</button>`;
             }
-            html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(data.name)}')">🚀 前往此处</button>`;
+            html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu(${nameArg})">${GMIcon.label('travel', '前往此处')}</button>`;
         }
         
         html += `</div>`;
@@ -738,10 +849,11 @@ window.GeneralMap = {
     renderInterior: function(id) {
         const data = this.mapData[id];
         const content = document.getElementById('popup-content');
+        const idArg = Sanitize.jsArg(id);
         if (!data.floors) data.floors = [];
 
         let html = `
-            <h3><span onclick="window.GeneralMap.renderPopup('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${Sanitize.encode(data.name)} - 内部</h3>
+            <h3><span onclick="window.GeneralMap.renderPopup(${idArg})" style="cursor:pointer; opacity:0.7">${GMIcon.svg('back')}</span> ${Sanitize.encode(data.name)} - 内部</h3>
             <div class="interior-container">
         `;
         if (data.internalImage) {
@@ -754,22 +866,22 @@ window.GeneralMap = {
         data.floors.forEach((floor, index) => {
             html += `
                 <div style="display:flex; align-items:center; gap:5px; margin-bottom:4px;">
-                    <button class="floor-btn" style="flex:1" onclick="window.GeneralMap.showFloorDetail('${id}', ${index})">
+                    <button class="floor-btn" style="flex:1" onclick="window.GeneralMap.showFloorDetail(${idArg}, ${index})">
                         ${Sanitize.encode(floor.name)}
                     </button>
                     ${this.isEditing ? `
-                        <button class="general-btn small danger" onclick="window.GeneralMap.deleteFloor('${id}', ${index})">×</button>
+                        <button class="general-btn small danger" onclick="window.GeneralMap.deleteFloor(${idArg}, ${index})">${GMIcon.svg('trash')}</button>
                     ` : ''}
                 </div>
             `;
         });
         
         if (this.isEditing) {
-            html += `<button class="general-btn small" style="width:100%; margin-top:10px;" onclick="window.GeneralMap.addFloor('${id}')">➕ 新增区域</button>`;
+            html += `<button class="general-btn small" style="width:100%; margin-top:10px;" onclick="window.GeneralMap.addFloor(${idArg})">${GMIcon.label('add', '新增区域')}</button>`;
             html += `
                 <div style="margin-top:10px; border-top:1px dashed #444; padding-top:5px;">
-                    <button class="general-btn small" onclick="document.getElementById('int-img-${id}').click()">📷 更换内部图</button>
-                    <input type="file" id="int-img-${id}" style="display:none" accept="image/*" onchange="window.GeneralMap.uploadImage('${id}', 'internalImage', this)">
+                    <button class="general-btn small" onclick="this.nextElementSibling.click()">${GMIcon.label('camera', '更换内部图')}</button>
+                    <input type="file" style="display:none" accept="image/*" onchange="window.GeneralMap.uploadImage(${idArg}, 'internalImage', this)">
                 </div>
             `;
         }
@@ -780,16 +892,18 @@ window.GeneralMap = {
     showFloorDetail: function(id, floorIndex) {
         const floor = this.mapData[id].floors[floorIndex];
         const content = document.getElementById('popup-content');
+        const idArg = Sanitize.jsArg(id);
+        const floorNameArg = Sanitize.jsArg(floor.name);
         
         let html = `
-            <h3><span onclick="window.GeneralMap.renderInterior('${id}')" style="cursor:pointer; opacity:0.7">⬅️</span> ${Sanitize.encode(floor.name)}</h3>
+            <h3><span onclick="window.GeneralMap.renderInterior(${idArg})" style="cursor:pointer; opacity:0.7">${GMIcon.svg('back')}</span> ${Sanitize.encode(floor.name)}</h3>
             <p style="font-size:12px; color:#888;">名称 (可编辑):</p>
             <div contenteditable="${this.isEditing}" class="editable-text" style="font-size:16px; margin-bottom:10px;"
-                 onblur="window.GeneralMap.updateFloor('${id}', ${floorIndex}, 'name', this.innerText)">${Sanitize.encode(floor.name)}</div>
+                 onblur="window.GeneralMap.updateFloor(${idArg}, ${floorIndex}, 'name', this.innerText)">${Sanitize.encode(floor.name)}</div>
             
             <p style="font-size:12px; color:#888;">描述 (可编辑):</p>
             <div contenteditable="${this.isEditing}" class="editable-text" style="min-height:50px; margin-bottom:15px;"
-                 onblur="window.GeneralMap.updateFloor('${id}', ${floorIndex}, 'content', this.innerText)">${Sanitize.encode(floor.content || "点击添加描述...")}</div>
+                 onblur="window.GeneralMap.updateFloor(${idArg}, ${floorIndex}, 'content', this.innerText)">${Sanitize.encode(floor.content || "点击添加描述...")}</div>
         `;
         
         if (floor.subItems && floor.subItems.length > 0) {
@@ -801,7 +915,7 @@ window.GeneralMap = {
         }
         
         html += `<div style="text-align:center; margin-top:20px;">
-                    <button class="general-btn" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(floor.name)}')">🚀 前往此处</button>
+                    <button class="general-btn" onclick="window.GeneralMap.openTravelMenu(${floorNameArg})">${GMIcon.label('travel', '前往此处')}</button>
                  </div>`;
 
         content.innerHTML = html;
@@ -816,11 +930,11 @@ window.GeneralMap = {
         const label = document.getElementById('edit-mode-label');
         if (this.isEditing) {
             body.classList.add('general-editing-active');
-            label.innerText = "✏️ 编辑中...";
+            label.innerHTML = GMIcon.label('edit', '编辑中...');
             label.style.color = this.themeColor;
         } else {
             body.classList.remove('general-editing-active');
-            label.innerText = "✏️ 编辑模式";
+            label.innerHTML = GMIcon.label('edit', '编辑模式');
             label.style.color = "#888";
         }
         this.renderMapPins(); // Re-render to show/hide edit cues
@@ -830,7 +944,7 @@ window.GeneralMap = {
         if (!this.worldData.maps[this.worldData.currentMapId].pins[id]) return;
         this.worldData.maps[this.worldData.currentMapId].pins[id][field] = value;
         this.saveData();
-        if (field === 'name' || field === 'type') this.renderMapPins();
+        if (['name', 'type', 'color', 'bgColor'].includes(field)) this.renderMapPins();
     },
 
     updateFloor: function(id, floorIndex, field, value) {
@@ -939,8 +1053,8 @@ window.GeneralMap = {
                 </div>
             </div>
 
-            <button class="general-btn" onclick="window.GeneralMap.confirmTravel(true)">👤 独自前往</button>
-            <button class="general-btn" onclick="window.GeneralMap.showCompanionInput()">👥 邀请某人一起前往</button>
+            <button class="general-btn" onclick="window.GeneralMap.confirmTravel(true)">${GMIcon.label('user', '独自前往')}</button>
+            <button class="general-btn" onclick="window.GeneralMap.showCompanionInput()">${GMIcon.label('users', '邀请某人一起前往')}</button>
             <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.closeTravelMenu()">返回</button>
         `);
         box.css('display', 'flex');
@@ -961,12 +1075,13 @@ window.GeneralMap = {
              this.tempTravelData.meetNPC = npcToggle.checked;
              this.tempTravelData.meetNPCName = $('#meet-npc-name').val() || '';
         }
+        const destinationArg = Sanitize.jsArg(this.tempTravelData.destination);
 
         $('#travel-menu-overlay .travel-options').html(`
             <p style="color: #888; margin: 0 0 10px 0;">和谁一起去？</p>
             <input type="text" id="companion-name" class="travel-input" placeholder="输入角色姓名">
             <button class="general-btn" onclick="window.GeneralMap.confirmTravel(false)">下一步</button>
-            <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(this.tempTravelData.destination)}')">返回</button>
+            <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu(${destinationArg})">返回</button>
         `);
     },
 
@@ -990,6 +1105,7 @@ window.GeneralMap = {
     showActivitySelection: function() {
         const activities = ['闲逛', '吃饭', '喝酒', '约会', '睡觉', '做爱'];
         const box = $('#travel-menu-overlay');
+        const destinationArg = Sanitize.jsArg(this.tempTravelData.destination);
         
         let html = `
             <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">在目的地做什么？</div>
@@ -997,7 +1113,7 @@ window.GeneralMap = {
         `;
         
         activities.forEach(act => {
-            html += `<button class="general-btn" onclick="window.GeneralMap.finalizeTravel('${act}')">${act}</button>`;
+            html += `<button class="general-btn" onclick="window.GeneralMap.finalizeTravel(${Sanitize.jsArg(act)})">${Sanitize.encode(act)}</button>`;
         });
         
         html += `
@@ -1009,7 +1125,7 @@ window.GeneralMap = {
                     <button class="general-btn" onclick="window.GeneralMap.finalizeTravel($('#custom-activity').val())">确定</button>
                 </div>
             </div>
-            <button class="general-btn" style="margin-top: 15px; width:100%; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu('${Sanitize.encode(this.tempTravelData.destination)}')">重选目的地</button>
+            <button class="general-btn" style="margin-top: 15px; width:100%; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu(${destinationArg})">重选目的地</button>
         `;
         
         box.find('.travel-options').html(html);
@@ -1075,28 +1191,46 @@ async function initializeExtension() {
     document.head.appendChild(link);
 
     // 3. 计算按钮位置
-    let defaultTop = '130px';
-    let defaultLeft = '10px';
-    let transformStyle = '';
-    
-    if (window.innerWidth <= 768) {
-        defaultTop = '50%';
-        defaultLeft = '50%';
-        transformStyle = 'translate(-50%, -50%)';
-    }
+    const togglePositionKey = 'general_map_toggle_position';
+    const toggleButtonSize = 45;
+    const toggleButtonMargin = 8;
+    const clampNumber = (value, min, max) => Math.min(Math.max(value, min), Math.max(min, max));
+    const clampTogglePosition = (left, top) => ({
+        left: clampNumber(left, toggleButtonMargin, window.innerWidth - toggleButtonSize - toggleButtonMargin),
+        top: clampNumber(top, toggleButtonMargin, window.innerHeight - toggleButtonSize - toggleButtonMargin),
+    });
+    const readSavedTogglePosition = () => {
+        try {
+            const saved = JSON.parse(localStorage.getItem(togglePositionKey));
+            if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+                return clampTogglePosition(saved.left, saved.top);
+            }
+        } catch (e) {}
+        return null;
+    };
+
+    const savedTogglePosition = readSavedTogglePosition();
+    const initialTogglePosition = savedTogglePosition || (
+        window.innerWidth <= 768
+            ? clampTogglePosition((window.innerWidth - toggleButtonSize) / 2, (window.innerHeight - toggleButtonSize) / 2)
+            : clampTogglePosition(10, 130)
+    );
+    let defaultTop = `${initialTogglePosition.top}px`;
+    let defaultLeft = `${initialTogglePosition.left}px`;
+    let transformStyle = 'none';
 
     // 4. 插入 HTML
     // [修复]: 在这里直接添加关键样式 (position, size, background)，防止 CSS 加载失败时面板不可见
     const panelHTML = `
         <div id="general-toggle-btn" title="打开 General 地图" 
-             style="position:fixed; top:${defaultTop}; left:${defaultLeft}; transform:${transformStyle}; z-index:20006; width:45px; height:45px; background:#b38b59; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); color:#fff; font-size:22px; user-select:none;">
-            🗺️
+             style="position:fixed; top:${defaultTop}; left:${defaultLeft}; transform:${transformStyle}; z-index:20006; width:45px; height:45px; background:#b38b59; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); color:#fff; font-size:22px; user-select:none; opacity:0.55; transition:opacity 0.2s ease, box-shadow 0.2s ease; touch-action:none;">
+            ${GMIcon.svg('map')}
         </div>
         <div id="general-map-panel" 
              style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 760px; height: 85vh; background: #1a1a1a; border: 2px solid #b38b59; border-radius: 8px; z-index: 20005; display: none; overflow: hidden; box-shadow: 0 0 50px rgba(0,0,0,0.9);">
-            <div id="general-drag-handle" style="width: 100%; height: 40px; background: #242424; cursor: move; display: flex; justify-content: center; align-items: center; border-bottom: 1px solid #b38b59; color: #e0c5a1;">
+            <div id="general-drag-handle" style="width: 100%; height: 40px; background: #242424; cursor: default; display: flex; justify-content: center; align-items: center; border-bottom: 1px solid #b38b59; color: #e0c5a1;">
                 <span>General 档案地图</span>
-                <span id="general-close-btn" style="position: absolute; right: 15px; cursor: pointer;">❌</span>
+                <span id="general-close-btn" style="position: absolute; right: 15px; cursor: pointer;">${GMIcon.svg('close')}</span>
             </div>
             <div id="general-content-area" style="height: calc(100% - 40px); overflow-y: auto; padding:0;">Loading...</div>
         </div>
@@ -1111,6 +1245,121 @@ async function initializeExtension() {
     const panel = $('#general-map-panel');
     
     let isDragging = false;
+    let suppressToggleClick = false;
+    let lastDragEndAt = 0;
+
+    const applyTogglePosition = (left, top) => {
+        if (!toggleBtn[0]) return clampTogglePosition(left, top);
+        const position = clampTogglePosition(left, top);
+        toggleBtn.css({
+            left: `${position.left}px`,
+            top: `${position.top}px`,
+            right: 'auto',
+            bottom: 'auto',
+            transform: 'none',
+        });
+        return position;
+    };
+
+    const syncToggleOpacity = () => {
+        const button = toggleBtn[0];
+        if (!button) return;
+        const shouldBeOpaque = isDragging || (button && button.matches(':hover')) || document.activeElement === button;
+        toggleBtn.css('opacity', shouldBeOpaque ? '1' : '0.55');
+    };
+
+    const saveTogglePosition = () => {
+        if (!toggleBtn[0]) return;
+        const rect = toggleBtn[0].getBoundingClientRect();
+        const position = applyTogglePosition(rect.left, rect.top);
+        try {
+            localStorage.setItem(togglePositionKey, JSON.stringify({
+                left: Math.round(position.left),
+                top: Math.round(position.top),
+            }));
+        } catch (e) {}
+    };
+
+    const finishToggleDrag = () => {
+        lastDragEndAt = Date.now();
+        setTimeout(() => {
+            isDragging = false;
+            suppressToggleClick = false;
+            toggleBtn.removeClass('general-toggle-dragging');
+            syncToggleOpacity();
+        }, 150);
+    };
+
+    const enableNativeToggleDrag = () => {
+        const button = toggleBtn[0];
+        let dragState = null;
+
+        toggleBtn.on('pointerdown.generalMapToggleDrag', (event) => {
+            const originalEvent = event.originalEvent;
+            if (originalEvent.button !== undefined && originalEvent.button !== 0) return;
+
+            const rect = button.getBoundingClientRect();
+            applyTogglePosition(rect.left, rect.top);
+            dragState = {
+                pointerId: originalEvent.pointerId,
+                startX: originalEvent.clientX,
+                startY: originalEvent.clientY,
+                offsetX: originalEvent.clientX - rect.left,
+                offsetY: originalEvent.clientY - rect.top,
+                moved: false,
+            };
+
+            if (button.setPointerCapture && originalEvent.pointerId !== undefined) {
+                try { button.setPointerCapture(originalEvent.pointerId); } catch (e) {}
+            }
+        });
+
+        toggleBtn.on('pointermove.generalMapToggleDrag', (event) => {
+            if (!dragState) return;
+            const originalEvent = event.originalEvent;
+            if (dragState.pointerId !== undefined && originalEvent.pointerId !== dragState.pointerId) return;
+
+            const deltaX = originalEvent.clientX - dragState.startX;
+            const deltaY = originalEvent.clientY - dragState.startY;
+            if (!dragState.moved && Math.hypot(deltaX, deltaY) < 4) return;
+
+            dragState.moved = true;
+            isDragging = true;
+            suppressToggleClick = true;
+            toggleBtn.addClass('general-toggle-dragging');
+            toggleBtn.css('opacity', '1');
+            applyTogglePosition(originalEvent.clientX - dragState.offsetX, originalEvent.clientY - dragState.offsetY);
+            event.preventDefault();
+            event.stopPropagation();
+        });
+
+        const endNativeDrag = (event) => {
+            if (!dragState) return;
+            const originalEvent = event.originalEvent;
+            if (dragState.pointerId !== undefined && originalEvent.pointerId !== dragState.pointerId) return;
+
+            const didMove = dragState.moved;
+            if (button.releasePointerCapture && originalEvent.pointerId !== undefined) {
+                try { button.releasePointerCapture(originalEvent.pointerId); } catch (e) {}
+            }
+
+            dragState = null;
+            if (didMove) {
+                saveTogglePosition();
+                finishToggleDrag();
+            } else {
+                isDragging = false;
+                suppressToggleClick = false;
+                syncToggleOpacity();
+            }
+        };
+
+        toggleBtn.on('pointerup.generalMapToggleDrag pointercancel.generalMapToggleDrag', endNativeDrag);
+    };
+
+    toggleBtn.on('mouseenter focusin', () => toggleBtn.css('opacity', '1'));
+    toggleBtn.on('mouseleave focusout', syncToggleOpacity);
+    $(window).off('resize.generalMapToggle').on('resize.generalMapToggle', () => saveTogglePosition());
 
     // 绑定关闭按钮
     closeBtn.on('click', (e) => {
@@ -1118,30 +1367,15 @@ async function initializeExtension() {
         panel.fadeOut();
     });
 
-    // 绑定拖拽逻辑 (jQuery UI)
-    if ($.fn.draggable) {
-        toggleBtn.draggable({
-            containment: "window",
-            scroll: false,
-            distance: 5, // 稍微减小距离判定
-            start: function() { 
-                isDragging = true; 
-            },
-            stop: function() { 
-                setTimeout(() => { isDragging = false; }, 100); 
-            }
-        });
-        
-        panel.draggable({ 
-            handle: '#general-drag-handle',
-            containment: 'window'
-        });
-    }
+    // 绑定拖拽逻辑。入口按钮使用原生 Pointer Events，避免依赖 jQuery UI。
+    enableNativeToggleDrag();
+
+    // 地图面板固定在原位，不绑定拖拽事件。
 
     // 绑定点击开/关逻辑
     toggleBtn.on('click', (e) => {
         // 如果正在拖拽，或者刚拖拽完，则不执行点击
-        if (isDragging) {
+        if (isDragging || suppressToggleClick || Date.now() - lastDragEndAt < 250) {
             e.preventDefault();
             e.stopPropagation();
             return;
@@ -1182,7 +1416,7 @@ async function initializeExtension() {
         // 将错误信息显示在面板里 (因为我们加了内联样式，所以现在面板一定可见)
         $('#general-content-area').html(`
             <div style="padding:20px; color:#e57373; text-align:center; font-family:sans-serif;">
-                <h3>⚠️ 启动失败</h3>
+                <h3 class="gm-inline-label">${GMIcon.label('warning', '启动失败')}</h3>
                 <p>${e.message}</p>
                 <div style="margin-top:15px; font-size:12px; color:#888;">
                     提示：请确保插件安装路径为:<br>

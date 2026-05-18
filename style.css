@@ -4,6 +4,23 @@
     --theme-bg-opacity: rgba(179, 139, 89, 0.3); /* 半透明背景色 (用于拖拽高亮) */
 }
 
+/* ST 主界面入口按钮 */
+#general-toggle-btn {
+    opacity: 0.55;
+    transition: opacity 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    touch-action: none;
+}
+
+#general-toggle-btn:hover,
+#general-toggle-btn:focus-visible,
+#general-toggle-btn.general-toggle-dragging {
+    opacity: 1 !important;
+}
+
+#general-toggle-btn:active {
+    cursor: grabbing !important;
+}
+
 /* --- 扩展面板容器 --- */
 #general-map-panel {
     position: fixed;
@@ -113,21 +130,58 @@
 }
 
 /* 控制栏与编辑开关 */
-.controls-bar {
+.controls-panel {
     background: #242424;
     border: 1px solid var(--theme-color); /* Updated */
-    padding: 8px 15px;
     margin-bottom: 15px;
     border-radius: 4px;
+    color: #e0c5a1;
+    width: 95%;
+    max-width: 700px;
+    overflow: hidden;
+}
+
+.controls-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.22);
+    border-bottom: 1px solid rgba(179, 139, 89, 0.35);
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.controls-collapse-btn {
+    min-width: 52px;
+    margin-left: 0 !important;
+}
+
+.controls-bar {
+    padding: 10px 15px;
     display: flex;
     flex-wrap: wrap;
     gap: 15px;
     align-items: center;
     justify-content: center;
-    color: #e0c5a1;
     font-size: 14px;
-    width: 95%;
-    max-width: 700px;
+    width: 100%;
+}
+
+.controls-panel.is-collapsed .controls-panel-header {
+    border-bottom: none;
+}
+
+.controls-panel.is-collapsed .controls-bar {
+    display: none;
+}
+
+.theme-picker-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 5px;
 }
 
 .edit-toggle-wrapper {
@@ -181,13 +235,36 @@ input:checked + .slider:before { transform: translateX(16px); }
     font-family: 'Noto Serif SC', serif;
     transition: all 0.3s;
     text-align: center;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     font-size: 13px;
 }
 .general-btn:hover { background-color: var(--theme-color); color: #1a1a1a; } /* Updated */
 .general-btn.danger { border-color: #e57373; color: #e57373; }
 .general-btn.danger:hover { background-color: #e57373; color: white; }
 .general-btn.small { padding: 2px 6px; font-size: 11px; margin-left: 5px; }
+
+.gm-icon {
+    width: 1em;
+    height: 1em;
+    flex: 0 0 auto;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vertical-align: -0.15em;
+}
+
+#edit-mode-label,
+.theme-picker-wrapper > span,
+.gm-inline-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
 
 /* 地图容器 */
 .map-container {
@@ -220,12 +297,18 @@ input:checked + .slider:before { transform: translateX(16px); }
     display: flex;
     justify-content: center;
     align-items: center;
+    gap: 4px;
     white-space: nowrap;
     transform: translate(-50%, -50%);
 }
-.location:hover { z-index: 20; background-color: var(--theme-color); color: #1a1a1a !important; } /* Updated */
+.location:hover {
+    z-index: 20;
+    border-color: #fff;
+    box-shadow: 0 0 0 2px var(--theme-bg-opacity);
+}
 .location.dragging { opacity: 0.8; transform: translate(-50%, -50%) scale(1.1); background-color: #e0c5a1; color: #000 !important; }
 .location .label { font-size: 12px; font-weight: bold; pointer-events: none; }
+.location .pin-type-icon { width: 12px; height: 12px; pointer-events: none; }
 
 /* 编辑模式下的地标特殊样式 */
 body.general-editing-active .location {
@@ -241,6 +324,66 @@ body.general-editing-active .location:active { cursor: grabbing; }
 body.general-editing-active .editable-text { border-color: #666; background: rgba(255,255,255,0.05); cursor: text; }
 body.general-editing-active .editable-text:hover { border-color: var(--theme-color); } /* Updated */
 body.general-editing-active .editable-text:focus { outline: none; border-color: var(--theme-color); background: #000; } /* Updated */
+
+.pin-style-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 10px 0;
+    padding: 8px;
+    border: 1px dashed #666;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.pin-style-controls label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: #cfcfcf;
+    font-size: 12px;
+}
+
+.pin-style-controls input[type="color"] {
+    width: 34px;
+    height: 26px;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 1px solid #555;
+    background: transparent;
+    cursor: pointer;
+}
+
+.location-intro {
+    margin: 12px 0;
+    padding: 10px;
+    border: 1px solid rgba(179, 139, 89, 0.35);
+    background: rgba(0, 0, 0, 0.22);
+}
+
+.location-intro-label {
+    margin: 0 0 6px;
+    color: var(--theme-color);
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.location-intro-body {
+    min-height: 56px;
+    color: #dcdcdc;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.location-intro-body.is-empty {
+    color: #777;
+}
+
+body.general-editing-active .location-intro-body.is-empty:empty::before {
+    content: attr(data-placeholder);
+    color: #777;
+    pointer-events: none;
+}
 
 .popup-image { 
     width: 100%; 
@@ -356,14 +499,26 @@ body.general-editing-active .edit-controls { display: flex; }
         padding: 15px; 
     }
 
+    .pin-style-controls {
+        grid-template-columns: 1fr;
+    }
+
     /* 5. [关键修复] 控制栏布局：改为横向自动换行，而不是纵向堆叠 */
+    .controls-panel {
+        width: 98%;
+    }
+
+    .controls-panel-header {
+        padding: 8px 10px;
+    }
+
     .controls-bar { 
         flex-direction: row;        /* 保持横向 */
         flex-wrap: wrap;            /* 允许换行 */
         align-items: center; 
         justify-content: center;    /* 居中对齐 */
         gap: 8px;                   /* 减小间距 */
-        width: 98%;
+        width: 100%;
         padding: 10px 5px;
     }
 
@@ -373,6 +528,12 @@ body.general-editing-active .edit-controls { display: flex; }
         min-width: 80px;            /* 最小宽度 */
         font-size: 12px;            /* 稍微缩小字体 */
         padding: 5px 2px;
+    }
+
+    .controls-collapse-btn {
+        flex: 0 0 auto;
+        min-width: 52px;
+        padding: 4px 8px;
     }
     
     /* 隐藏一些移动端不常用的冗余间距 */
