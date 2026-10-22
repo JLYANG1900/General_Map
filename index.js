@@ -1,7 +1,56 @@
 const extensionName = "General_Map";
 const extensionPath = `scripts/extensions/third-party/${extensionName}`;
 
-let stContext = null;
+const getSTContext = () => window.SillyTavern?.getContext?.() || null;
+const gmAnimationDuration = () => window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 0 : 200;
+
+function isRecord(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validId(id) {
+    return typeof id === 'string' && id.trim() && !['__proto__', 'constructor', 'prototype'].includes(id);
+}
+
+function normalizeWorld(value) {
+    if (!isRecord(value)) throw new Error('地图备份必须是对象');
+    let world = JSON.parse(JSON.stringify(value));
+    if (!Object.prototype.hasOwnProperty.call(world, 'maps')) {
+        if (!Object.keys(world).length || !Object.values(world).every(pin => isRecord(pin) && 'x' in pin && 'y' in pin)) {
+            throw new Error('无效的地图数据格式');
+        }
+        world = { ...JSON.parse(JSON.stringify(defaultWorldData)), maps: { ...JSON.parse(JSON.stringify(defaultWorldData.maps)), default_city: { ...defaultWorldData.maps.default_city, pins: world } } };
+    }
+    if (!isRecord(world.maps) || !Object.keys(world.maps).length) throw new Error('备份至少需要一张地图');
+    const coordinate = value => {
+        const text = String(value ?? '50%').trim();
+        if (!/^\d+(?:\.\d+)?%?$/.test(text) || parseFloat(text) > 100) throw new Error('地标坐标必须在 0 到 100% 之间');
+        return `${parseFloat(text)}%`;
+    };
+    for (const [mapId, map] of Object.entries(world.maps)) {
+        if (!validId(mapId) || !isRecord(map) || !isRecord(map.pins)) throw new Error('地图 ID 或地标列表无效');
+        map.name = String(map.name || mapId);
+        map.background = window.GeneralMapTracking.safeImage(map.background);
+        for (const [id, pin] of Object.entries(map.pins)) {
+            if (!validId(id) || !isRecord(pin)) throw new Error('地标数据无效');
+            pin.id = id;
+            pin.name = String(pin.name || '未命名地点');
+            pin.type = ['simple', 'complex', 'portal', 'custom'].includes(pin.type) ? pin.type : 'simple';
+            pin.x = coordinate(pin.x); pin.y = coordinate(pin.y);
+            pin.aliases = window.GeneralMapTracking.splitAliases(pin.aliases);
+            pin.image = window.GeneralMapTracking.safeImage(pin.image);
+            pin.internalImage = window.GeneralMapTracking.safeImage(pin.internalImage);
+            if (pin.floors != null && (!Array.isArray(pin.floors) || !pin.floors.every(isRecord))) throw new Error('建筑楼层数据无效');
+            for (const floor of pin.floors || []) {
+                floor.name = String(floor.name || '未命名区域');
+                floor.subItems = Array.isArray(floor.subItems) ? floor.subItems.map(String) : [];
+            }
+        }
+    }
+    if (!validId(world.currentMapId) || !Object.prototype.hasOwnProperty.call(world.maps, world.currentMapId)) world.currentMapId = Object.keys(world.maps)[0];
+    world.tracking = window.GeneralMapTracking.normalizeConfig(world.tracking);
+    return world;
+}
 
 // ==========================================
 // 工具 1: 安全净化 (防止 XSS 攻击)
@@ -35,9 +84,9 @@ const GMIcon = {
         close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
         door: '<path d="M5 21h14"/><path d="M7 21V5a2 2 0 0 1 2-2h6v18"/><path d="M11 12h.01"/>',
         edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/>',
-        export: '<path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/>',
+        export: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
         folder: '<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
-        import: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
+        import: '<path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/>',
         map: '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z"/><path d="M9 3v15"/><path d="M15 6v15"/>',
         palette: '<path d="M12 22a10 10 0 1 1 10-10c0 2.2-1.4 3-3 3h-1.5a1.5 1.5 0 0 0 0 3H18a2 2 0 0 1 0 4h-6Z"/><circle cx="7.5" cy="10" r=".75"/><circle cx="10.5" cy="7" r=".75"/><circle cx="14" cy="7.5" r=".75"/><circle cx="16.5" cy="11" r=".75"/>',
         pin: '<path d="M12 21s7-5.4 7-12a7 7 0 1 0-14 0c0 6.6 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/>',
@@ -66,28 +115,30 @@ const GMIcon = {
 // ==========================================
 function compressImage(file, maxWidth = 800, quality = 0.7) {
     return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) return reject(new Error('请选择图片文件'));
         const reader = new FileReader();
-        reader.readAsDataURL(file);
         reader.onload = (event) => {
             const img = new Image();
-            img.src = event.target.result;
             img.onload = () => {
+                try {
                 let width = img.width;
                 let height = img.height;
-                if (width > maxWidth) {
-                    height = Math.round(height * (maxWidth / width));
-                    width = maxWidth;
-                }
+                const scale = Math.min(1, maxWidth / Math.max(width, height));
+                width = Math.max(1, Math.round(width * scale));
+                height = Math.max(1, Math.round(height * scale));
                 const canvas = document.createElement('canvas');
                 canvas.width = width;
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
                 resolve(canvas.toDataURL('image/jpeg', quality));
+                } catch (error) { reject(error); }
             };
-            img.onerror = (err) => reject(err);
+            img.onerror = () => reject(new Error('无法解码图片，请选择有效的图片文件'));
+            img.src = event.target.result;
         };
-        reader.onerror = (err) => reject(err);
+        reader.onerror = () => reject(reader.error || new Error('无法读取图片文件'));
+        reader.readAsDataURL(file);
     });
 }
 
@@ -117,7 +168,7 @@ const SimpleDB = {
                 resolve(this.db);
             };
             
-            request.onerror = (event) => reject("DB Open Error");
+            request.onerror = () => reject(request.error || new Error('DB Open Error'));
         });
     },
 
@@ -127,7 +178,7 @@ const SimpleDB = {
             const transaction = this.db.transaction([storeName], "readonly");
             const store = transaction.objectStore(storeName);
             const request = store.get(key);
-            request.onsuccess = () => resolve(request.result || null);
+            request.onsuccess = () => resolve(request.result ?? null);
             request.onerror = () => reject(request.error);
         });
     },
@@ -138,7 +189,8 @@ const SimpleDB = {
             const transaction = this.db.transaction([storeName], "readwrite");
             const store = transaction.objectStore(storeName);
             const request = store.put(value, key);
-            request.onsuccess = () => resolve(true);
+            transaction.oncomplete = () => resolve(true);
+            transaction.onabort = transaction.onerror = () => reject(transaction.error || new Error('保存事务未完成'));
             request.onerror = () => reject(request.error);
         });
     },
@@ -149,7 +201,8 @@ const SimpleDB = {
             const transaction = this.db.transaction([storeName], "readwrite");
             const store = transaction.objectStore(storeName);
             const request = store.delete(key);
-            request.onsuccess = () => resolve(true);
+            transaction.oncomplete = () => resolve(true);
+            transaction.onabort = transaction.onerror = () => reject(transaction.error || new Error('删除事务未完成'));
             request.onerror = () => reject(request.error);
         });
     }
@@ -221,7 +274,7 @@ window.GeneralMap = {
     worldData: null,     // V3 新增: 存储整个世界的所有地图
     mapHistory: [],      // V3 新增: 历史堆栈，用于"返回上一层"
     isEditing: false,    
-    themeColor: '#b38b59',
+    themeColor: '#0b57d0',
     controlsCollapsed: false,
     pinEventCleanups: [],
     
@@ -250,6 +303,9 @@ window.GeneralMap = {
         this.renderMapPins();
         this.initControlsPanel();
         this.updateUIControls();
+        this.tracker?.destroy();
+        this.tracker = window.GeneralMapTracking.create({ map: this, icons: GMIcon, compressImage, getContext: getSTContext });
+        this.tracker.init();
     },
 
     // ==========================================
@@ -261,22 +317,40 @@ window.GeneralMap = {
             savedColor = localStorage.getItem('general_map_theme');
         }
         
-        if (savedColor) {
-            this.applyTheme(savedColor);
-            const picker = document.getElementById('theme-color-picker');
-            if(picker) picker.value = savedColor;
-        }
+        this.applyTheme(/^#[0-9a-f]{6}$/i.test(savedColor) ? savedColor : this.themeColor);
+        const picker = document.getElementById('theme-color-picker');
+        if (picker) picker.value = this.themeColor;
     },
 
     applyTheme: function(color) {
+        if (!/^#[0-9a-f]{6}$/i.test(color)) return;
         this.themeColor = color;
-        document.documentElement.style.setProperty('--theme-color', color);
-        const r = parseInt(color.substr(1, 2), 16);
-        const g = parseInt(color.substr(3, 2), 16);
-        const b = parseInt(color.substr(5, 2), 16);
-        document.documentElement.style.setProperty('--theme-bg-opacity', `rgba(${r}, ${g}, ${b}, 0.3)`);
+        const seed = [1, 3, 5].map(start => parseInt(color.slice(start, start + 2), 16));
+        const mix = (rgb, target, amount) => rgb.map(value => Math.round(value + (target - value) * amount));
+        const css = rgb => `rgb(${rgb.join(', ')})`;
+        const luminance = rgb => rgb.reduce((sum, value, i) => {
+            const channel = value / 255;
+            return sum + (channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4) * [.2126, .7152, .0722][i];
+        }, 0);
+        // Keep both white button text and tinted-container text readable.
+        const container = mix(seed, 255, .88);
+        const maxLuminance = Math.min(.18, (luminance(container) + .05) / 4.5 - .05);
+        let primary = [...seed];
+        while (luminance(primary) > maxLuminance) primary = mix(primary, 0, .08);
+        const tokens = {
+            '--gm-theme-color': color,
+            '--gm-theme-bg-opacity': `rgba(${seed.join(', ')}, 0.3)`,
+            '--gm-primary': css(primary),
+            '--gm-primary-hover': css(mix(primary, 0, .12)),
+            '--gm-primary-container': css(container),
+            '--gm-primary-soft': css(mix(seed, 255, .95)),
+        };
+        for (const id of ['general-map-panel', 'general-toggle-btn']) {
+            const root = document.getElementById(id);
+            if (root) for (const [name, value] of Object.entries(tokens)) root.style.setProperty(name, value);
+        }
         
-        SimpleDB.setItem('general_map_theme', color);
+        SimpleDB.setItem('general_map_theme', color).catch(error => console.error('[General Map] Theme save failed', error));
     },
 
     // ==========================================
@@ -298,36 +372,28 @@ window.GeneralMap = {
 
         let parsedData = null;
         if (rawData) {
-            try {
-                parsedData = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
-            } catch (e) {
-                console.error("数据损坏，重置为默认", e);
-            }
+            parsedData = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
         }
 
         // 2. 数据迁移逻辑 (Check if V3)
         // V3 结构必须包含 'maps' 和 'currentMapId'
-        if (parsedData && parsedData.maps && parsedData.currentMapId) {
-            this.worldData = parsedData;
+        if (parsedData) {
+            this.worldData = normalizeWorld(parsedData);
+            if (!parsedData.maps) {
+                const oldBg = await SimpleDB.getItem('general_map_bg_v2') || localStorage.getItem('general_map_bg_v2');
+                if (oldBg) this.worldData.maps.default_city.background = window.GeneralMapTracking.safeImage(oldBg);
+            }
         } else {
-            // 这是旧版 V2 数据 (纯 pins 对象)
-            console.log("检测到旧版 V2 数据，正在迁移至 V3 多层级结构...");
-            
             // 获取旧的全局背景图
             let oldBg = await SimpleDB.getItem('general_map_bg_v2');
             if (!oldBg) oldBg = localStorage.getItem('general_map_bg_v2');
 
             // 构造新的 World 对象
-            this.worldData = JSON.parse(JSON.stringify(defaultWorldData));
-            
-            // 如果有旧 pins 数据，覆盖默认 city
-            if (parsedData && Object.keys(parsedData).length > 0) {
-                this.worldData.maps["default_city"].pins = parsedData;
-            }
+            this.worldData = normalizeWorld(defaultWorldData);
             
             // 如果有旧背景，存入默认 city
             if (oldBg) {
-                this.worldData.maps["default_city"].background = oldBg;
+                this.worldData.maps["default_city"].background = window.GeneralMapTracking.safeImage(oldBg);
             }
 
             // 保存迁移后的数据
@@ -343,23 +409,31 @@ window.GeneralMap = {
     saveData: async function() {
         try {
             await SimpleDB.setItem('general_map_data_v2', this.worldData);
+            return true;
         } catch (e) {
             console.error("保存失败", e);
             alert("保存数据时发生错误：" + e.message);
+            return false;
         }
     },
 
     resetData: async function() {
         if(confirm("确定要重置所有地图数据（包括所有层级）吗？")) {
-            await SimpleDB.removeItem('general_map_data_v2');
-            // 也清除旧背景 key，防止混淆
-            await SimpleDB.removeItem('general_map_bg_v2');
+            const replacement = normalizeWorld(defaultWorldData);
+            this.closeAllPopups();
+            try { await SimpleDB.setItem('general_map_data_v2', replacement); }
+            catch (error) { alert('重置失败：' + error.message); return; }
             localStorage.removeItem('general_map_data_v2'); 
+            localStorage.removeItem('general_map_bg_v2');
             
             this.mapHistory = [];
             // 重置时直接使用 defaultWorldData，其中已包含你要求的新增地点
-            this.worldData = JSON.parse(JSON.stringify(defaultWorldData));
-            await this.saveData();
+            this.worldData = replacement;
+            if (!document.getElementById('general-map-container')) {
+                await initializeExtension();
+                return;
+            }
+            this.tracker?.reset();
             
             await this.loadBackground();
             this.renderMapPins();
@@ -374,10 +448,11 @@ window.GeneralMap = {
     
     // 切换到指定 ID 的地图
     switchMap: async function(mapId) {
-        if (!mapId) return;
+        if (!validId(mapId) || mapId === this.worldData.currentMapId) return;
+        this.closeAllPopups();
 
         // 如果目标地图不存在，自动创建一个空白地图
-        if (!this.worldData.maps[mapId]) {
+        if (!Object.prototype.hasOwnProperty.call(this.worldData.maps, mapId)) {
             console.log(`Map ID ${mapId} 不存在，正在创建新地图...`);
             this.worldData.maps[mapId] = {
                 name: mapId,
@@ -402,6 +477,7 @@ window.GeneralMap = {
     // 返回上一级
     goBackMap: async function() {
         if (this.mapHistory.length === 0) return;
+        this.closeAllPopups();
 
         const prevMapId = this.mapHistory.pop();
         
@@ -450,7 +526,8 @@ window.GeneralMap = {
         if (!panel || !button) return;
 
         panel.classList.toggle('is-collapsed', this.controlsCollapsed);
-        button.innerText = this.controlsCollapsed ? '展开' : '收起';
+        button.title = this.controlsCollapsed ? '展开工具' : '收起工具';
+        button.setAttribute('aria-label', button.title);
         button.setAttribute('aria-expanded', String(!this.controlsCollapsed));
     },
 
@@ -484,31 +561,12 @@ window.GeneralMap = {
                 try {
                     const json = JSON.parse(e.target.result);
                     
-                    // 1. 定义临时变量存储处理后的数据
-                    let newWorldData = null;
-
-                    // 2. 判断数据格式
-                    if (json.maps && json.currentMapId) {
-                        // === 情况 A: 这是新版 V3 格式 ===
-                        console.log("识别到 V3 格式备份");
-                        newWorldData = json;
-                    } else if (Object.values(json).some(item => item.x && item.y)) {
-                        // === 情况 B: 这是旧版 V1/V2 格式 (纯 Pins 集合) ===
-                        console.log("识别到 V1/V2 旧版格式，正在自动迁移...");
-                        
-                        // 复制一份默认的世界结构
-                        newWorldData = JSON.parse(JSON.stringify(defaultWorldData));
-                        
-                        // 将旧版的所有 Pin 数据塞入 "default_city" 地图中
-                        // 注意：旧版备份通常不包含背景图，这里会使用 default_city 的默认背景
-                        newWorldData.maps["default_city"].pins = json;
-                    } else {
-                        // === 情况 C: 未知格式 ===
-                        throw new Error("无效的地图数据格式 (未找到 maps 结构，也不像旧版地标数据)");
-                    }
+                    const newWorldData = normalizeWorld(json);
 
                     // 3. 执行导入
                     if (confirm("导入备份将覆盖当前的地图数据，确定继续吗？")) {
+                        this.closeAllPopups();
+                        await SimpleDB.setItem('general_map_data_v2', newWorldData);
                         this.worldData = newWorldData;
                         this.mapHistory = []; // 清空历史
                         
@@ -517,7 +575,7 @@ window.GeneralMap = {
                             this.worldData.currentMapId = Object.keys(this.worldData.maps)[0];
                         }
 
-                        await this.saveData(); 
+                        this.tracker?.reset();
                         await this.loadBackground();
                         this.renderMapPins();
                         this.closeAllPopups();
@@ -530,6 +588,7 @@ window.GeneralMap = {
                 }
                 input.value = '';
             };
+            reader.onerror = () => { alert('无法读取备份文件'); input.value = ''; };
             reader.readAsText(input.files[0]);
         }
     },
@@ -565,13 +624,14 @@ window.GeneralMap = {
             this.bindPinEvents(div, loc.id);
             container.appendChild(div);
         });
+        this.tracker?.render();
     },
 
     addNewPin: function() {
         if (!this.isEditing) {
             document.getElementById('edit-mode-toggle').click();
         }
-        const id = 'custom-' + Date.now();
+        const id = 'custom-' + (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
         // 直接写入当前地图的 pins
         this.worldData.maps[this.worldData.currentMapId].pins[id] = {
             id: id,
@@ -584,7 +644,7 @@ window.GeneralMap = {
         };
         this.saveData();
         this.renderMapPins();
-        setTimeout(() => this.renderPopup(id), 100);
+        this.renderPopup(id);
     },
 
     deletePin: function(id) {
@@ -597,6 +657,7 @@ window.GeneralMap = {
     },
 
     bindPinEvents: function(elm, id) {
+        const targetMap = this.worldData.maps[this.worldData.currentMapId];
         let isDragging = false;
         let startX, startY, initialLeft, initialTop;
         let hasMoved = false; 
@@ -635,9 +696,10 @@ window.GeneralMap = {
                 const pctX = (elm.offsetLeft / container.offsetWidth * 100).toFixed(1) + '%';
                 const pctY = (elm.offsetTop / container.offsetHeight * 100).toFixed(1) + '%';
                 // 更新当前地图数据
-                this.worldData.maps[this.worldData.currentMapId].pins[id].x = pctX;
-                this.worldData.maps[this.worldData.currentMapId].pins[id].y = pctY;
+                targetMap.pins[id].x = pctX;
+                targetMap.pins[id].y = pctY;
                 this.saveData();
+                this.tracker?.render();
             }
             isDragging = false;
             elm.classList.remove('dragging');
@@ -679,9 +741,10 @@ window.GeneralMap = {
             if (hasMoved) {
                 const pctX = (elm.offsetLeft / container.offsetWidth * 100).toFixed(1) + '%';
                 const pctY = (elm.offsetTop / container.offsetHeight * 100).toFixed(1) + '%';
-                this.worldData.maps[this.worldData.currentMapId].pins[id].x = pctX;
-                this.worldData.maps[this.worldData.currentMapId].pins[id].y = pctY;
+                targetMap.pins[id].x = pctX;
+                targetMap.pins[id].y = pctY;
                 this.saveData();
+                this.tracker?.render();
             }
             isDragging = false;
             elm.classList.remove('dragging');
@@ -727,7 +790,7 @@ window.GeneralMap = {
             }
 
             // 否则打开详情弹窗
-            if (id === 'other-places') {
+            if (id === 'other-places' && !this.isEditing) {
                 this.showCustomTravelPopup();
             } else {
                 this.renderPopup(id);
@@ -742,6 +805,7 @@ window.GeneralMap = {
     renderPopup: function(id) {
         const data = this.mapData[id]; // use getter
         if (!data) return;
+        this.popupTarget = { mapId: this.worldData.currentMapId, id };
         const idArg = Sanitize.jsArg(id);
         const nameArg = Sanitize.jsArg(data.name);
         const targetMapArg = Sanitize.jsArg(data.targetMapId || "");
@@ -754,7 +818,7 @@ window.GeneralMap = {
         let typeSelectHTML = "";
         if (this.isEditing) {
             typeSelectHTML = `
-                <div style="margin: 10px 0; padding: 5px; border: 1px dashed #666;">
+                <div class="gm-type-controls">
                     <label class="gm-inline-label">${GMIcon.label('pin', '地点类型:')}
                         <select onchange="window.GeneralMap.updateField(${idArg}, 'type', this.value); window.GeneralMap.renderPopup(${idArg})">
                             <option value="simple" ${data.type === 'simple' ? 'selected' : ''}>普通地点</option>
@@ -763,12 +827,12 @@ window.GeneralMap = {
                         </select>
                     </label>
                     ${data.type === 'portal' ? `
-                        <div style="margin-top:8px; display:flex; align-items:center;">
-                            <span style="white-space:nowrap;">目标地图ID: </span>
-                            <input type="text" class="travel-input" style="flex:1; margin:0 0 0 8px; padding:4px; text-align:left;" 
+                        <label class="gm-portal-target">
+                            <span>目标地图 ID</span>
+                            <input type="text" class="travel-input"
                             value="${Sanitize.encode(data.targetMapId || '')}" 
                             onblur="window.GeneralMap.updateField(${idArg}, 'targetMapId', this.value)" placeholder="例: default_world">
-                        </div>
+                        </label>
                     ` : ''}
                 </div>
             `;
@@ -795,12 +859,13 @@ window.GeneralMap = {
         const introClass = introText ? "location-intro-body editable-text" : "location-intro-body editable-text is-empty";
 
         let html = `
-            <div style="display:flex; justify-content:space-between; align-items:start;">
+            <div class="gm-popup-heading">
                 <h3 contenteditable="${this.isEditing}" class="editable-text" style="flex:1" onblur="window.GeneralMap.updateField(${idArg}, 'name', this.innerText)">${Sanitize.encode(data.name)}</h3>
                 ${this.isEditing ? `<button class="general-btn small danger" onclick="window.GeneralMap.deletePin(${idArg})">${GMIcon.label('trash', '删除')}</button>` : ''}
             </div>
             ${typeSelectHTML}
             ${styleControlsHTML}
+            ${this.isEditing ? `<label class="gm-pin-aliases">地点别名<input type="text" value="${Sanitize.encode((data.aliases || []).join('、'))}" placeholder="图书馆、阅览室" onblur="window.GeneralMap.updateField(${idArg}, 'aliases', this.value)"></label>` : ''}
             <p contenteditable="${this.isEditing}" class="editable-text" onblur="window.GeneralMap.updateField(${idArg}, 'desc', this.innerText)">${Sanitize.encode(data.desc || "暂无描述")}</p>
             <div class="location-intro">
                 <div class="location-intro-label">地点介绍</div>
@@ -809,9 +874,9 @@ window.GeneralMap = {
         `;
 
         if (data.image) {
-            html += `<img src="${data.image}" class="popup-image">`;
+            html += `<img src="${Sanitize.encode(window.GeneralMapTracking.safeImage(data.image))}" class="popup-image" alt="地点封面">`;
         } else if (this.isEditing && data.type !== 'portal') {
-            html += `<div style="border:1px dashed #666; padding:20px; text-align:center; color:#666">暂无封面图</div>`;
+            html += `<div class="gm-image-empty">暂无封面图</div>`;
         }
 
         if (this.isEditing && data.type !== 'portal') {
@@ -825,10 +890,10 @@ window.GeneralMap = {
         }
 
         // 底部按钮区域
-        html += `<div style="text-align:center; margin-top:15px; display:flex; gap:10px; justify-content:center;">`;
+        html += `<div class="gm-popup-actions">`;
         
         if (data.type === 'portal') {
-             html += `<button class="general-btn" onclick="window.GeneralMap.switchMap(${targetMapArg})">${GMIcon.label('portal', '进入该区域')}</button>`;
+             html += `<button class="general-btn gm-primary-button" onclick="window.GeneralMap.switchMap(${targetMapArg})">${GMIcon.label('portal', '进入该区域')}</button>`;
         } else {
             if (data.type === 'complex' || (this.isEditing && data.floors)) {
                 html += `<button class="general-btn" onclick="window.GeneralMap.renderInterior(${idArg})">${GMIcon.label('door', '进入内部')}</button>`;
@@ -836,7 +901,7 @@ window.GeneralMap = {
                 // 如果是 simple 但想加楼层
                 html += `<button class="general-btn small" onclick="window.GeneralMap.addFloor(${idArg})">${GMIcon.label('add', '添加楼层/区域')}</button>`;
             }
-            html += `<button class="general-btn" onclick="window.GeneralMap.openTravelMenu(${nameArg})">${GMIcon.label('travel', '前往此处')}</button>`;
+            html += `<button class="general-btn gm-primary-button" onclick="window.GeneralMap.openTravelMenu(${nameArg})">${GMIcon.label('travel', '前往此处')}</button>`;
         }
         
         html += `</div>`;
@@ -848,18 +913,19 @@ window.GeneralMap = {
 
     renderInterior: function(id) {
         const data = this.mapData[id];
+        if (!data) return;
         const content = document.getElementById('popup-content');
         const idArg = Sanitize.jsArg(id);
         if (!data.floors) data.floors = [];
 
         let html = `
-            <h3><span onclick="window.GeneralMap.renderPopup(${idArg})" style="cursor:pointer; opacity:0.7">${GMIcon.svg('back')}</span> ${Sanitize.encode(data.name)} - 内部</h3>
+            <h3 class="gm-interior-heading"><button type="button" class="general-btn gm-icon-button" title="返回地点" aria-label="返回地点" onclick="window.GeneralMap.renderPopup(${idArg})">${GMIcon.svg('back')}</button> ${Sanitize.encode(data.name)} - 内部</h3>
             <div class="interior-container">
         `;
         if (data.internalImage) {
-            html += `<img src="${data.internalImage}" class="interior-image">`;
+            html += `<img src="${Sanitize.encode(window.GeneralMapTracking.safeImage(data.internalImage))}" class="interior-image" alt="建筑内部">`;
         } else {
-            html += `<div style="height:200px; display:flex; align-items:center; justify-content:center; color:#666;">暂无内部示意图</div>`;
+            html += `<div class="gm-image-empty gm-interior-empty">暂无内部示意图</div>`;
         }
 
         html += `<div class="floor-nav">`;
@@ -879,7 +945,7 @@ window.GeneralMap = {
         if (this.isEditing) {
             html += `<button class="general-btn small" style="width:100%; margin-top:10px;" onclick="window.GeneralMap.addFloor(${idArg})">${GMIcon.label('add', '新增区域')}</button>`;
             html += `
-                <div style="margin-top:10px; border-top:1px dashed #444; padding-top:5px;">
+                <div class="gm-interior-upload">
                     <button class="general-btn small" onclick="this.nextElementSibling.click()">${GMIcon.label('camera', '更换内部图')}</button>
                     <input type="file" style="display:none" accept="image/*" onchange="window.GeneralMap.uploadImage(${idArg}, 'internalImage', this)">
                 </div>
@@ -890,18 +956,19 @@ window.GeneralMap = {
     },
 
     showFloorDetail: function(id, floorIndex) {
-        const floor = this.mapData[id].floors[floorIndex];
+        const floor = this.mapData[id]?.floors?.[floorIndex];
+        if (!floor) return;
         const content = document.getElementById('popup-content');
         const idArg = Sanitize.jsArg(id);
         const floorNameArg = Sanitize.jsArg(floor.name);
         
         let html = `
-            <h3><span onclick="window.GeneralMap.renderInterior(${idArg})" style="cursor:pointer; opacity:0.7">${GMIcon.svg('back')}</span> ${Sanitize.encode(floor.name)}</h3>
-            <p style="font-size:12px; color:#888;">名称 (可编辑):</p>
+            <h3 class="gm-interior-heading"><button type="button" class="general-btn gm-icon-button" title="返回建筑内部" aria-label="返回建筑内部" onclick="window.GeneralMap.renderInterior(${idArg})">${GMIcon.svg('back')}</button> ${Sanitize.encode(floor.name)}</h3>
+            <p class="gm-field-label">名称</p>
             <div contenteditable="${this.isEditing}" class="editable-text" style="font-size:16px; margin-bottom:10px;"
                  onblur="window.GeneralMap.updateFloor(${idArg}, ${floorIndex}, 'name', this.innerText)">${Sanitize.encode(floor.name)}</div>
             
-            <p style="font-size:12px; color:#888;">描述 (可编辑):</p>
+            <p class="gm-field-label">描述</p>
             <div contenteditable="${this.isEditing}" class="editable-text" style="min-height:50px; margin-bottom:15px;"
                  onblur="window.GeneralMap.updateFloor(${idArg}, ${floorIndex}, 'content', this.innerText)">${Sanitize.encode(floor.content || "点击添加描述...")}</div>
         `;
@@ -926,36 +993,42 @@ window.GeneralMap = {
         const checkbox = document.getElementById('edit-mode-toggle');
         if (checkbox) checkbox.checked = this.isEditing;
         
-        const body = document.body;
+        const body = document.getElementById('general-map-panel');
         const label = document.getElementById('edit-mode-label');
         if (this.isEditing) {
             body.classList.add('general-editing-active');
             label.innerHTML = GMIcon.label('edit', '编辑中...');
-            label.style.color = this.themeColor;
         } else {
             body.classList.remove('general-editing-active');
             label.innerHTML = GMIcon.label('edit', '编辑模式');
-            label.style.color = "#888";
         }
         this.renderMapPins(); // Re-render to show/hide edit cues
+        this.closeAllPopups();
     },
 
     updateField: function(id, field, value) {
+        if (!this.isEditing || (this.popupTarget && this.popupTarget.mapId !== this.worldData.currentMapId)) return;
+        if (!['name', 'desc', 'introduction', 'type', 'targetMapId', 'color', 'bgColor', 'aliases', 'image'].includes(field)) return;
+        if (field === 'aliases') value = window.GeneralMapTracking.splitAliases(value);
+        if (field === 'image') value = window.GeneralMapTracking.safeImage(value);
         if (!this.worldData.maps[this.worldData.currentMapId].pins[id]) return;
         this.worldData.maps[this.worldData.currentMapId].pins[id][field] = value;
         this.saveData();
-        if (['name', 'type', 'color', 'bgColor'].includes(field)) this.renderMapPins();
+        if (['name', 'type', 'color', 'bgColor', 'aliases'].includes(field)) this.renderMapPins();
+        if (field === 'image') this.renderPopup(id);
     },
 
     updateFloor: function(id, floorIndex, field, value) {
         const pin = this.worldData.maps[this.worldData.currentMapId].pins[id];
-        if (!pin || !pin.floors[floorIndex]) return;
+        if (!this.isEditing || !['name', 'content'].includes(field) || !pin?.floors?.[floorIndex]) return;
         pin.floors[floorIndex][field] = value;
         this.saveData();
+        this.tracker?.render();
     },
 
     addFloor: function(id) {
         const pin = this.worldData.maps[this.worldData.currentMapId].pins[id];
+        if (!pin || !this.isEditing) return;
         if (!pin.floors) pin.floors = [];
         pin.floors.push({ name: "新区域 " + (pin.floors.length + 1), content: "描述..." });
         pin.type = 'complex'; 
@@ -964,38 +1037,52 @@ window.GeneralMap = {
     },
 
     deleteFloor: function(id, index) {
+        if (!this.mapData[id]?.floors?.[index] || !this.isEditing) return;
         if(confirm("确定删除吗？")) {
             this.worldData.maps[this.worldData.currentMapId].pins[id].floors.splice(index, 1);
             this.saveData();
             this.renderInterior(id);
+            this.tracker?.render();
         }
     },
 
     uploadImage: function(id, field, input) {
+        const world = this.worldData;
+        const mapId = world.currentMapId;
+        const pin = world.maps[mapId].pins[id];
+        if (!pin || !['image', 'internalImage'].includes(field)) return;
         if (input.files && input.files[0]) {
             const file = input.files[0];
             compressImage(file, 600, 0.6).then((base64Data) => {
-                this.worldData.maps[this.worldData.currentMapId].pins[id][field] = base64Data;
+                if (this.worldData !== world || world.maps[mapId]?.pins[id] !== pin) return;
+                pin[field] = base64Data;
                 this.saveData();
+                if (this.worldData.currentMapId !== mapId || this.popupTarget?.id !== id) return;
                 if (field === 'image') this.renderPopup(id);
                 if (field === 'internalImage') this.renderInterior(id);
             }).catch(err => {
                 console.error("图片处理失败", err);
                 alert("图片处理失败，请重试");
-            });
+            }).finally(() => { input.value = ''; });
         }
     },
     
     // 背景图现在属于 Current Map
     changeBackground: function(input) {
+        const world = this.worldData;
+        const mapId = world.currentMapId;
+        const target = world.maps[mapId];
         if (input.files && input.files[0]) {
             compressImage(input.files[0], 1024, 0.7).then(async (bgData) => {
-                document.getElementById('general-map-container').style.backgroundImage = `url(${bgData})`;
+                if (this.worldData !== world || world.maps[mapId] !== target) return;
                 
-                // Save to current map structure
-                this.worldData.maps[this.worldData.currentMapId].background = bgData;
-                await this.saveData();
-            });
+                const previousBackground = target.background;
+                target.background = bgData;
+                const saved = await this.saveData();
+                // A failed write must not leave a background that disappears on reload.
+                if (!saved && target.background === bgData) target.background = previousBackground;
+                if (this.worldData === world && world.maps[mapId] === target && world.currentMapId === mapId) await this.loadBackground();
+            }).catch(error => alert('背景图片处理失败：' + error.message)).finally(() => { input.value = ''; });
         }
     },
 
@@ -1015,8 +1102,10 @@ window.GeneralMap = {
     // 出行逻辑
     // ==========================================
     closeAllPopups: function() {
+        if (document.getElementById('dynamic-popup')?.contains(document.activeElement)) document.activeElement.blur();
+        this.popupTarget = null;
         $('#general-overlay').hide();
-        $('.general-popup').hide();
+        $('#general-map-panel .general-popup').hide();
         $('#travel-menu-overlay').hide();
     },
     
@@ -1041,21 +1130,21 @@ window.GeneralMap = {
         const box = $('#travel-menu-overlay');
         
         box.find('.travel-options').html(`
-            <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">目的地：${Sanitize.encode(destination)}</div>
+            <div class="gm-travel-destination">目的地：${Sanitize.encode(destination)}</div>
             
-            <div style="margin-bottom:15px; text-align:left; background:rgba(0,0,0,0.3); padding:10px; border-radius:4px;">
+            <div class="gm-npc-option">
                 <label style="display:flex; align-items:center; cursor:pointer;">
                     <input type="checkbox" id="meet-npc-toggle" onchange="window.GeneralMap.toggleNpcInput()">
-                    <span style="margin-left:8px; color:#dcdcdc;">是否要遇见 NPC?</span>
+                    <span style="margin-left:8px;">是否要遇见 NPC?</span>
                 </label>
                 <div id="npc-input-container" style="display:none; margin-top:8px;">
                     <input type="text" id="meet-npc-name" class="travel-input" style="margin:0; width:100%; box-sizing:border-box;" placeholder="输入 NPC 名字">
                 </div>
             </div>
 
-            <button class="general-btn" onclick="window.GeneralMap.confirmTravel(true)">${GMIcon.label('user', '独自前往')}</button>
+            <button class="general-btn gm-primary-button" onclick="window.GeneralMap.confirmTravel(true)">${GMIcon.label('user', '独自前往')}</button>
             <button class="general-btn" onclick="window.GeneralMap.showCompanionInput()">${GMIcon.label('users', '邀请某人一起前往')}</button>
-            <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.closeTravelMenu()">返回</button>
+            <button class="general-btn gm-text-button" onclick="window.GeneralMap.closeTravelMenu()">返回</button>
         `);
         box.css('display', 'flex');
     },
@@ -1078,10 +1167,10 @@ window.GeneralMap = {
         const destinationArg = Sanitize.jsArg(this.tempTravelData.destination);
 
         $('#travel-menu-overlay .travel-options').html(`
-            <p style="color: #888; margin: 0 0 10px 0;">和谁一起去？</p>
+            <label class="gm-field-label" for="companion-name">和谁一起去？</label>
             <input type="text" id="companion-name" class="travel-input" placeholder="输入角色姓名">
-            <button class="general-btn" onclick="window.GeneralMap.confirmTravel(false)">下一步</button>
-            <button class="general-btn" style="margin-top: 10px; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu(${destinationArg})">返回</button>
+            <button class="general-btn gm-primary-button" onclick="window.GeneralMap.confirmTravel(false)">下一步</button>
+            <button class="general-btn gm-text-button" onclick="window.GeneralMap.openTravelMenu(${destinationArg})">返回</button>
         `);
     },
 
@@ -1108,7 +1197,7 @@ window.GeneralMap = {
         const destinationArg = Sanitize.jsArg(this.tempTravelData.destination);
         
         let html = `
-            <div style="margin-bottom:10px; font-weight:bold; color:var(--theme-color);">在目的地做什么？</div>
+            <div class="gm-travel-destination">在目的地做什么？</div>
             <div class="activity-grid">
         `;
         
@@ -1118,14 +1207,14 @@ window.GeneralMap = {
         
         html += `
             </div>
-            <div style="margin-top:15px; border-top:1px solid #444; padding-top:10px; text-align:left;">
-                <p style="margin:0 0 5px 0; font-size:12px; color:#888;">自定义活动：</p>
+            <div class="gm-custom-activity">
+                <label class="gm-field-label" for="custom-activity">自定义活动</label>
                 <div style="display:flex; gap:5px;">
                     <input type="text" id="custom-activity" class="travel-input" style="margin:0; flex:1;" placeholder="例如：看电影">
-                    <button class="general-btn" onclick="window.GeneralMap.finalizeTravel($('#custom-activity').val())">确定</button>
+                    <button class="general-btn gm-primary-button" onclick="window.GeneralMap.finalizeTravel($('#custom-activity').val())">确定</button>
                 </div>
             </div>
-            <button class="general-btn" style="margin-top: 15px; width:100%; border-color: #666; color: #888;" onclick="window.GeneralMap.openTravelMenu(${destinationArg})">重选目的地</button>
+            <button class="general-btn gm-text-button" onclick="window.GeneralMap.openTravelMenu(${destinationArg})">重选目的地</button>
         `;
         
         box.find('.travel-options').html(html);
@@ -1151,10 +1240,13 @@ window.GeneralMap = {
 
         outputText += `。活动内容：${activity}。`;
 
-        if (stContext) {
-            stContext.executeSlashCommandsWithOptions(`/setinput ${outputText}`);
+        const textarea = document.getElementById('send_textarea');
+        if (textarea) {
+            textarea.value = outputText;
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            textarea.focus();
             this.closeAllPopups(); 
-            $('#general-map-panel').fadeOut(); 
+            $('#general-map-panel').fadeOut(gmAnimationDuration());
         } else {
             console.log("Mock Travel Command:", outputText);
             alert("指令已生成: " + outputText);
@@ -1171,13 +1263,13 @@ const initInterval = setInterval(() => {
     // 确保依赖项已加载
     if (window.SillyTavern && window.SillyTavern.getContext && window.jQuery) {
         clearInterval(initInterval);
-        stContext = window.SillyTavern.getContext();
         initializeExtension();
     }
 }, 500);
 
 async function initializeExtension() {
     console.log("[General Map] Starting Initialization...");
+    window.GeneralMap.tracker?.destroy();
 
     // 1. 清理旧元素
     $('#general-map-panel').remove();
@@ -1220,19 +1312,23 @@ async function initializeExtension() {
     let transformStyle = 'none';
 
     // 4. 插入 HTML
-    // [修复]: 在这里直接添加关键样式 (position, size, background)，防止 CSS 加载失败时面板不可见
+    // Only dynamic positioning stays inline; the visual system lives in style.css.
     const panelHTML = `
-        <div id="general-toggle-btn" title="打开 General 地图" 
-             style="position:fixed; top:${defaultTop}; left:${defaultLeft}; transform:${transformStyle}; z-index:20006; width:45px; height:45px; background:#b38b59; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); color:#fff; font-size:22px; user-select:none; opacity:0.55; transition:opacity 0.2s ease, box-shadow 0.2s ease; touch-action:none;">
+        <button id="general-toggle-btn" type="button" title="打开 General 地图" aria-label="打开 General 地图"
+             style="top:${defaultTop}; left:${defaultLeft}; transform:${transformStyle};">
             ${GMIcon.svg('map')}
-        </div>
-        <div id="general-map-panel" 
-             style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 760px; height: 85vh; background: #1a1a1a; border: 2px solid #b38b59; border-radius: 8px; z-index: 20005; display: none; overflow: hidden; box-shadow: 0 0 50px rgba(0,0,0,0.9);">
-            <div id="general-drag-handle" style="width: 100%; height: 40px; background: #242424; cursor: default; display: flex; justify-content: center; align-items: center; border-bottom: 1px solid #b38b59; color: #e0c5a1;">
-                <span>General 档案地图</span>
-                <span id="general-close-btn" style="position: absolute; right: 15px; cursor: pointer;">${GMIcon.svg('close')}</span>
+        </button>
+        <div id="general-map-panel" style="display:none;" role="region" aria-label="General Map 互动地图">
+            <div id="general-drag-handle">
+                <span class="gm-brand-mark">${GMIcon.svg('map')}</span>
+                <div class="gm-brand-text">
+                    <span class="gm-brand-name">General Map</span>
+                    <span class="gm-brand-caption">互动地图</span>
+                    <small class="gm-brand-author">插件作者：JLYANG1900</small>
+                </div>
+                <button id="general-close-btn" type="button" title="关闭地图" aria-label="关闭地图">${GMIcon.svg('close')}</button>
             </div>
-            <div id="general-content-area" style="height: calc(100% - 40px); overflow-y: auto; padding:0;">Loading...</div>
+            <div id="general-content-area"><p class="gm-loading">正在加载地图…</p></div>
         </div>
     `;
     $('body').append(panelHTML);
@@ -1364,7 +1460,7 @@ async function initializeExtension() {
     // 绑定关闭按钮
     closeBtn.on('click', (e) => {
         e.stopPropagation();
-        panel.fadeOut();
+        panel.fadeOut(gmAnimationDuration());
     });
 
     // 绑定拖拽逻辑。入口按钮使用原生 Pointer Events，避免依赖 jQuery UI。
@@ -1381,10 +1477,12 @@ async function initializeExtension() {
             return;
         }
 
+        panel.stop(true, true);
         if (panel.is(':visible')) {
-            panel.fadeOut();
+            panel.fadeOut(gmAnimationDuration());
         } else {
-            panel.fadeIn();
+            panel.fadeIn(gmAnimationDuration());
+            window.GeneralMap.tracker?.refresh();
             // 重新获取焦点或检查内容
             if($.trim($('#general-content-area').text()) === "Loading...") {
                 // 如果还显示 Loading，可能是初始化失败了，尝试重新显示错误信息
@@ -1397,6 +1495,15 @@ async function initializeExtension() {
     // 5. 异步加载数据
     // ============================================================
     try {
+        if (!window.GeneralMapTracking) {
+            await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = `${extensionPath}/tracking.js`;
+                script.onload = resolve;
+                script.onerror = () => reject(new Error('无法加载 tracking.js，请检查插件文件是否完整'));
+                document.head.appendChild(script);
+            });
+        }
         console.log(`[General Map] Fetching HTML from: ${extensionPath}/map.html`);
         const response = await fetch(`${extensionPath}/map.html`);
         
@@ -1413,16 +1520,16 @@ async function initializeExtension() {
 
     } catch (e) {
         console.error("[General Map] Error:", e);
-        // 将错误信息显示在面板里 (因为我们加了内联样式，所以现在面板一定可见)
+        // Keep startup errors in the same scoped surface as the map.
         $('#general-content-area').html(`
-            <div style="padding:20px; color:#e57373; text-align:center; font-family:sans-serif;">
+            <div class="gm-startup-error">
                 <h3 class="gm-inline-label">${GMIcon.label('warning', '启动失败')}</h3>
-                <p>${e.message}</p>
-                <div style="margin-top:15px; font-size:12px; color:#888;">
+                <p>${Sanitize.encode(e.message)}</p>
+                <div class="gm-field-label">
                     提示：请确保插件安装路径为:<br>
                     <code>.../extensions/third-party/General_Map</code>
                 </div>
-                <button onclick="window.GeneralMap.resetData()" style="margin-top:20px; padding:5px 10px; background:#333; color:#fff; border:1px solid #666; cursor:pointer;">尝试重置数据</button>
+                <button class="general-btn danger" onclick="window.GeneralMap.resetData()">尝试重置数据</button>
             </div>
         `);
     }

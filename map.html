@@ -1,15 +1,16 @@
 <div class="general-wrapper">
-    <h1>大地图 - 自由定义一切</h1>
-    
     <!-- 顶部功能面板 -->
     <div class="controls-panel" id="general-controls-panel">
         <div class="controls-panel-header">
-            <span>功能面板</span>
-            <button id="controls-collapse-btn" class="general-btn small controls-collapse-btn" type="button" onclick="window.GeneralMap.toggleControlsPanel()">收起</button>
+            <span>地图工具</span>
+            <button id="controls-collapse-btn" class="general-btn gm-icon-button controls-collapse-btn" type="button" title="收起工具" aria-label="收起工具" aria-controls="general-controls-bar" onclick="window.GeneralMap.toggleControlsPanel()">
+                <svg class="gm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+            </button>
         </div>
         <div class="controls-bar" id="general-controls-bar">
+            <div class="gm-main-tools">
             <!-- V3新增：返回上一层按钮 (默认隐藏) -->
-            <button id="map-back-btn" class="general-btn danger" style="display:none;" onclick="window.GeneralMap.goBackMap()">
+            <button id="map-back-btn" class="general-btn" style="display:none;" onclick="window.GeneralMap.goBackMap()">
                 <svg class="gm-icon gm-icon-back" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
                 <span>返回上一层</span>
             </button>
@@ -17,7 +18,7 @@
             <!-- 编辑开关 -->
             <div class="edit-toggle-wrapper">
                 <label class="switch">
-                    <input type="checkbox" id="edit-mode-toggle" onchange="window.GeneralMap.toggleEditMode()">
+                    <input type="checkbox" id="edit-mode-toggle" aria-label="编辑模式" onchange="window.GeneralMap.toggleEditMode()">
                     <span class="slider round"></span>
                 </label>
                 <span id="edit-mode-label">
@@ -27,49 +28,84 @@
             </div>
 
             <!-- 新增：添加地点按钮 -->
-            <button class="general-btn" onclick="window.GeneralMap.addNewPin()">
+            <button class="general-btn gm-primary-button" onclick="window.GeneralMap.addNewPin()">
                 <svg class="gm-icon gm-icon-pin" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 21s7-5.4 7-12a7 7 0 1 0-14 0c0 6.6 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/></svg>
                 <span>新增地点</span>
             </button>
 
             <!-- 数据重置 -->
-            <button class="general-btn" onclick="window.GeneralMap.resetData()">
+            <button id="gm-track-toggle" class="general-btn" type="button" aria-expanded="false" aria-controls="gm-track-panel">
+                <svg class="gm-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M16 11a3 3 0 1 0-1-5.8"/><path d="M17 21a6 6 0 0 0-3-5.2"/></svg>
+                <span>角色追踪</span><span id="gm-track-count">0 / 0</span>
+            </button>
+            </div>
+            <div class="gm-secondary-tools" role="group" aria-label="地图文件与外观">
+            <button class="general-btn gm-tool-icon gm-danger-icon" title="重置数据" aria-label="重置数据" onclick="window.GeneralMap.resetData()">
                 <svg class="gm-icon gm-icon-reset" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/></svg>
-                <span>重置数据</span>
             </button>
             
             <!-- [新增] 备份功能 -->
-            <button class="general-btn" onclick="window.GeneralMap.exportBackup()">
-                <svg class="gm-icon gm-icon-export" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
-                <span>导出备份</span>
+            <button class="general-btn gm-tool-icon" type="button" title="导出备份（下载 JSON）" aria-label="导出备份" onclick="window.GeneralMap.exportBackup()">
+                <svg class="gm-icon gm-icon-export" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
             </button>
-            <button class="general-btn" onclick="document.getElementById('backup-upload').click()">
-                <svg class="gm-icon gm-icon-import" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-                <span>导入备份</span>
+            <button class="general-btn gm-tool-icon" type="button" title="导入备份（选择 JSON）" aria-label="导入备份" onclick="document.getElementById('backup-upload').click()">
+                <svg class="gm-icon gm-icon-import" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
             </button>
             <input type="file" id="backup-upload" style="display:none" accept=".json" onchange="window.GeneralMap.importBackup(this)">
 
             <!-- 背景更换 -->
-            <button class="general-btn" onclick="document.getElementById('bg-upload').click()">
+            <button class="general-btn gm-tool-icon" type="button" title="更换当前地图背景（选择图片）" aria-label="更换背景" onclick="document.getElementById('bg-upload').click()">
                 <svg class="gm-icon gm-icon-folder" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
-                <span>更换背景</span>
             </button>
             <input type="file" id="bg-upload" accept="image/*" style="display:none;" onchange="window.GeneralMap.changeBackground(this)">
 
             <!-- 新增：主题颜色选择器 -->
-            <div class="theme-picker-wrapper">
+            <label class="theme-picker-wrapper" for="theme-color-picker">
                 <span>
                     <svg class="gm-icon gm-icon-palette" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 22a10 10 0 1 1 10-10c0 2.2-1.4 3-3 3h-1.5a1.5 1.5 0 0 0 0 3H18a2 2 0 0 1 0 4h-6Z"/><circle cx="7.5" cy="10" r=".75"/><circle cx="10.5" cy="7" r=".75"/><circle cx="14" cy="7.5" r=".75"/><circle cx="16.5" cy="11" r=".75"/></svg>
-                    <span>主题色:</span>
+                    <span>主题色</span>
                 </span>
-                <input type="color" id="theme-color-picker" value="#b38b59" onchange="window.GeneralMap.applyTheme(this.value)" style="border:none; padding:0; background:none; cursor:pointer;">
+                <input type="color" id="theme-color-picker" value="#0b57d0" onchange="window.GeneralMap.applyTheme(this.value)">
+            </label>
             </div>
         </div>
     </div>
 
+    <section id="gm-track-panel" hidden aria-label="角色追踪">
+        <div class="gm-tracking-header">
+            <div><h3>角色追踪</h3><span id="gm-track-chat"></span></div>
+            <button id="gm-track-refresh" class="general-btn gm-icon-button" type="button" title="刷新位置" aria-label="刷新位置">
+                <svg class="gm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/></svg>
+            </button>
+            <button id="gm-track-add" class="general-btn" type="button"><svg class="gm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>添加角色</button>
+        </div>
+        <div id="gm-track-list"></div>
+        <p id="gm-track-notice" role="status" aria-live="polite"></p>
+        <form id="gm-track-form" hidden>
+            <div class="gm-tracking-fields">
+                <label>角色名<input id="gm-track-name" required maxlength="120" autocomplete="off" placeholder="关祁"></label>
+                <label>角色别名<input id="gm-track-aliases" autocomplete="off" placeholder="关同学、Guan Qi"></label>
+                <label>位置来源<select id="gm-track-source"><option value="auto">自动（消息优先）</option><option value="message">消息变量 / MVU</option><option value="chat">聊天变量</option><option value="global">全局变量</option><option value="manual">手动位置</option></select></label>
+                <label>匹配地图<select id="gm-track-map"></select></label>
+                <label id="gm-track-path-field" class="gm-full-width">位置变量路径（留空自动识别）<input id="gm-track-path" autocomplete="off" placeholder="stat_data.主要角色.关祁.位置"></label>
+                <label id="gm-track-manual-field" class="gm-full-width" hidden>地点名称<input id="gm-track-location" autocomplete="off" placeholder="诺曼庄园"></label>
+                <label class="gm-full-width">头像地址<input id="gm-track-avatar" autocomplete="off" placeholder="https://..."></label>
+            </div>
+            <div class="gm-tracking-actions">
+                <label class="general-btn gm-upload-label" title="上传头像"><svg class="gm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-7 5-5 5 5M5 21h14"/></svg><span>上传头像</span><input id="gm-track-upload" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+                <button id="gm-track-clear-avatar" class="general-btn gm-icon-button" type="button" title="清除自定义头像" aria-label="清除自定义头像"><svg class="gm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15M10 11v6M14 11v6"/></svg></button>
+                <span id="gm-track-avatar-state"></span>
+                <label class="gm-enabled-label"><input id="gm-track-enabled" type="checkbox" checked>启用</label>
+                <button id="gm-track-save" class="general-btn gm-primary-button" type="submit">保存</button>
+                <button id="gm-track-cancel" class="general-btn gm-text-button" type="button">取消</button>
+            </div>
+        </form>
+    </section>
+
     <!-- 副标题区域：当前区域信息 -->
-    <h2 style="display:flex; align-items:center; justify-content:center; gap:10px;">
-        <span id="subtitle-text">双击地标查看详情，长按拖拽移动 (编辑模式下可直接拖拽)</span>
+    <h2 class="gm-map-heading">
+        <svg class="gm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3ZM9 3v15M15 6v15"/></svg>
+        <span id="subtitle-text">当前区域</span>
     </h2>
 
     <!-- 地图容器：内容由 JS 动态生成 -->
@@ -79,9 +115,9 @@
 
     <!-- 通用弹窗容器：内容由 JS 动态生成 -->
     <div id="dynamic-popup" class="general-popup">
-        <span class="close-btn" onclick="window.GeneralMap.closeAllPopups()">
+        <button type="button" class="close-btn" title="关闭详情" aria-label="关闭详情" onclick="window.GeneralMap.closeAllPopups()">
             <svg class="gm-icon gm-icon-close" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </span>
+        </button>
         <div id="popup-content"></div>
     </div>
 
@@ -91,10 +127,10 @@
     <!-- 出行菜单 -->
     <div id="travel-menu-overlay" onclick="if(event.target === this) window.GeneralMap.closeTravelMenu()">
         <div class="travel-menu-box">
-            <span class="close-btn" onclick="window.GeneralMap.closeTravelMenu()">
+            <button type="button" class="close-btn" title="关闭出行菜单" aria-label="关闭出行菜单" onclick="window.GeneralMap.closeTravelMenu()">
                 <svg class="gm-icon gm-icon-close" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </span>
-            <div id="travel-title" style="color:var(--theme-color); margin-bottom:20px;">前往目的地</div>
+            </button>
+            <div id="travel-title">前往目的地</div>
             <div id="travel-content" class="travel-options"></div>
         </div>
     </div>
